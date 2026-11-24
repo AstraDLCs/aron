@@ -1,5 +1,6 @@
 from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.config import get_settings
 from app.routers import (
@@ -14,6 +15,7 @@ from app.routers import (
     datacenter,
     cv_files,
     health,
+    landing,
     persons,
     positions,
     requirements,
@@ -42,6 +44,8 @@ def create_app() -> FastAPI:
                    ai_queue, ai_chat, tests_module):
         api.include_router(module.router)
     app.include_router(api)
+    app.include_router(landing.router)  # "/" pública: descarga del instalador
+    app.mount("/recursos", StaticFiles(directory=landing.RESOURCES), name="recursos")
     return app
 
 

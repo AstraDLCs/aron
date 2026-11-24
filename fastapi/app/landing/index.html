@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pulso Laboral para Windows</title>
+<meta name="description" content="Descarga la aplicación de escritorio Pulso Laboral para Windows.">
+<link rel="icon" type="image/png" href="/recursos/icono.png">
+<style>
+@font-face { font-family: "Plus Jakarta Sans"; font-weight: 700; font-display: swap;
+  src: url("/recursos/plus-jakarta-sans-latin-700-normal.woff2") format("woff2"); }
+@font-face { font-family: "Public Sans"; font-weight: 400; font-display: swap;
+  src: url("/recursos/public-sans-latin-400-normal.woff2") format("woff2"); }
+@font-face { font-family: "Public Sans"; font-weight: 600; font-display: swap;
+  src: url("/recursos/public-sans-latin-600-normal.woff2") format("woff2"); }
+
+:root {
+  --bg: #F7F7F8;
+  --surface: #FFFFFF;
+  --plomo: #EFEFF1;
+  --line: #E2E4E8;
+  --ink: #23272E;
+  --muted: #5C626D;
+  --accent: #B26337;
+  --accent-hover: #99522B;
+  --accent-ink: #FFFFFF;
+  --ok: #2F6B4F;
+  --ok-soft: #E8F2EC;
+  --no: #8A3B32;
+  --no-soft: #F6EAE8;
+  --display: "Plus Jakarta Sans", "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+  --text: "Public Sans", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --code: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #16181C;
+    --surface: #1E2126;
+    --plomo: #262A30;
+    --line: #333841;
+    --ink: #ECEDEF;
+    --muted: #A3A9B3;
+    --accent: #D48C60;
+    --accent-hover: #E3A57E;
+    --accent-ink: #1B120C;
+    --ok: #93CBA9;
+    --ok-soft: #1E2C25;
+    --no: #E7A399;
+    --no-soft: #30211F;
+  }
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 400 1.0625rem/1.6 var(--text);
+}
+a { color: inherit; }
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
+
+.wrap { max-width: 68rem; margin: 0 auto; padding: 0 1.25rem; }
+
+header.brand { display: flex; align-items: center; gap: .75rem; padding: 1.75rem 0 0; }
+header.brand img { width: 2.25rem; height: 2.25rem; border-radius: .55rem; }
+header.brand span { font: 700 1.125rem/1 var(--display); letter-spacing: -.01em; }
+
+.hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, .95fr);
+  gap: 4rem;
+  align-items: center;
+  padding: 4.5rem 0 4rem;
+}
+h1 {
+  font: 700 clamp(2.4rem, 5vw, 3.6rem)/1.04 var(--display);
+  letter-spacing: -.03em;
+  margin: 0 0 1.25rem;
+  max-width: 13ch;
+}
+.lead { font-size: 1.1875rem; color: var(--muted); margin: 0 0 2.25rem; max-width: 34rem; }
+
+.download {
+  display: inline-block;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font: 600 1.0625rem/1.3 var(--text);
+  text-align: center;
+  text-decoration: none;
+  padding: 1.05rem 1.6rem;
+  border-radius: .6rem;
+  transition: background-color .15s ease;
+}
+.download:hover { background: var(--accent-hover); }
+.meta { margin: .9rem 0 0; font-size: .9375rem; color: var(--muted); }
+.unavailable {
+  margin: 0; padding: 1rem 1.25rem; max-width: 34rem;
+  background: var(--plomo); border-radius: .6rem; color: var(--muted);
+}
+.account { margin: 1.75rem 0 0; max-width: 34rem; font-size: .9375rem; color: var(--muted);
+  padding-left: 1rem; border-left: 3px solid var(--line); }
+
+/* El árbol rrhh / puesto / fuente: el elemento central de la página. */
+.tree {
+  margin: 0;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  padding: 1.75rem 1.75rem 1.5rem;
+}
+.tree ul { list-style: none; margin: 0; padding: 0; }
+.tree ul ul { margin-left: .55rem; padding-left: 1.1rem; border-left: 1.5px solid var(--line); }
+.tree li { position: relative; }
+.tree ul ul > li::before {
+  content: ""; position: absolute; left: -1.1rem; top: 1.05rem;
+  width: .8rem; border-top: 1.5px solid var(--line);
+}
+.tree ul ul > li:last-child::after {
+  content: ""; position: absolute; left: -1.2rem; top: 1.15rem; bottom: 0;
+  width: .3rem; background: var(--surface);
+}
+.node { display: flex; align-items: center; gap: .55rem; padding: .3rem 0; min-height: 2.1rem; }
+.node svg { flex: none; width: 1.05rem; height: 1.05rem; color: var(--muted); }
+.folder { font-weight: 600; }
+.root { font: 700 1.125rem/1 var(--display); letter-spacing: -.01em; }
+.file { color: var(--muted); font-size: .9375rem; overflow-wrap: anywhere; }
+.verdict {
+  margin-left: auto; flex: none;
+  font-size: .8125rem; font-weight: 600; line-height: 1;
+  padding: .4rem .6rem; border-radius: 99px;
+  font-variant-numeric: tabular-nums;
+}
+.verdict.ok { color: var(--ok); background: var(--ok-soft); }
+.verdict.no { color: var(--no); background: var(--no-soft); }
+.tree figcaption {
+  margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid var(--line);
+  font-size: .9375rem; color: var(--muted);
+}
+
+.steps { padding: 3.5rem 0 1rem; border-top: 1px solid var(--line); }
+h2 { font: 700 1.5rem/1.2 var(--display); letter-spacing: -.015em; margin: 0 0 1.5rem; }
+ol.install { list-style: none; counter-reset: paso; margin: 0; padding: 0; max-width: 44rem; }
+ol.install li {
+  counter-increment: paso; position: relative;
+  padding: 0 0 1.4rem 3.25rem; min-height: 2.25rem;
+}
+ol.install li::before {
+  content: counter(paso);
+  position: absolute; left: 0; top: -.1rem;
+  width: 2.1rem; height: 2.1rem; border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--plomo); color: var(--ink);
+  font: 700 1rem/1 var(--display);
+}
+ol.install strong { font-weight: 600; }
+
+.verify { padding: 2rem 0 4rem; max-width: 44rem; }
+.verify h2 { font-size: 1.125rem; margin-bottom: .5rem; }
+.verify p { margin: 0 0 .75rem; color: var(--muted); font-size: .9375rem; }
+.verify pre {
+  margin: 0 0 .75rem; padding: .75rem 1rem; overflow-x: auto;
+  background: var(--surface); border: 1px solid var(--line); border-radius: .5rem;
+}
+.verify code { font: .875rem/1.5 var(--code); }
+.hash { display: flex; flex-wrap: wrap; gap: .25rem .75rem; align-items: baseline; }
+.hash span { font-weight: 600; color: var(--ink); }
+.hash code { overflow-wrap: anywhere; }
+
+@media (max-width: 860px) {
+  .hero { grid-template-columns: 1fr; gap: 2.75rem; padding: 3rem 0 3rem; }
+  .tree { padding: 1.25rem; }
+}
+@media (max-width: 420px) {
+  .download { display: block; }
+  .node.leaf { flex-wrap: wrap; row-gap: .35rem; }
+  .node.leaf .verdict { margin-left: 0; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="brand">
+    <img src="/recursos/icono.png" alt="" width="36" height="36">
+    <span>Pulso Laboral</span>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div>
+        <h1>Pulso Laboral para Windows</h1>
+        <p class="lead">Ordena los CV por puesto y por la bolsa de la que llegaron. La IA los pre-clasifica
+          y tu equipo de RR.HH. toma la decisión final.</p>
+        $download_block
+        <p class="account">La aplicación ya viene configurada para conectarse a este servidor. $account_note</p>
+      </div>
+
+      <figure class="tree" aria-label="Ejemplo de cómo se ordenan los CV">
+        <ul>
+          <li>
+            <div class="node root">
+              <svg viewBox="0 0 20 20" aria-hidden="true"><path fill="currentColor" d="M2 5.5A1.5 1.5 0 0 1 3.5 4h4l1.6 1.8h7.4A1.5 1.5 0 0 1 18 7.3v7.2a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 2 14.5z"/></svg>
+              rrhh
+            </div>
+            <ul>
+              <li>
+                <div class="node folder">
+                  <svg viewBox="0 0 20 20" aria-hidden="true"><path fill="currentColor" d="M2 5.5A1.5 1.5 0 0 1 3.5 4h4l1.6 1.8h7.4A1.5 1.5 0 0 1 18 7.3v7.2a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 2 14.5z"/></svg>
+                  Perforista y Cargador de Explosivos
+                </div>
+                <ul>
+                  <li>
+                    <div class="node folder">
+                      <svg viewBox="0 0 20 20" aria-hidden="true"><path fill="currentColor" d="M2 5.5A1.5 1.5 0 0 1 3.5 4h4l1.6 1.8h7.4A1.5 1.5 0 0 1 18 7.3v7.2a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 2 14.5z"/></svg>
+                      linkedin
+                    </div>
+                    <ul>
+                      <li><div class="node leaf"><span class="file">cv-rosa-huaman.pdf</span><span class="verdict ok">Pre-aprobado, 84</span></div></li>
+                      <li><div class="node leaf"><span class="file">cv-jorge-mamani.pdf</span><span class="verdict ok">Pre-aprobado, 76</span></div></li>
+                    </ul>
+                  </li>
+                  <li>
+                    <div class="node folder">
+                      <svg viewBox="0 0 20 20" aria-hidden="true"><path fill="currentColor" d="M2 5.5A1.5 1.5 0 0 1 3.5 4h4l1.6 1.8h7.4A1.5 1.5 0 0 1 18 7.3v7.2a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 2 14.5z"/></svg>
+                      computrabajo
+                    </div>
+                    <ul>
+                      <li><div class="node leaf"><span class="file">cv-luis-ccori.pdf</span><span class="verdict no">Pre-denegado, 41</span></div></li>
+                    </ul>
+                  </li>
+                </ul>
+              </li>
+            </ul>
+          </li>
+        </ul>
+        <figcaption>Cada CV queda en su carpeta: rrhh, puesto y fuente. La IA propone un veredicto con
+          puntaje; aprobar, rechazar o contratar siempre lo decide una persona.</figcaption>
+      </figure>
+    </section>
+
+    <section class="steps" aria-labelledby="instalar">
+      <h2 id="instalar">Cómo instalarla</h2>
+      <ol class="install">
+        <li>Descarga el instalador y ábrelo.</li>
+        <li>Si Windows muestra <strong>«Windows protegió su PC»</strong>, elige <strong>«Más información»</strong>
+          y luego <strong>«Ejecutar de todas formas»</strong>. El aviso aparece porque el instalador todavía no
+          tiene firma digital.</li>
+        <li>Sigue el asistente y acepta el permiso de administrador: la aplicación se instala para todos los
+          usuarios del equipo. Si falta Microsoft Edge WebView2, el instalador lo descarga, así que necesitas
+          conexión a internet.</li>
+        <li>Abre Pulso Laboral desde el menú Inicio e inicia sesión con tu cuenta.</li>
+      </ol>
+    </section>
+
+    $verify_block
+  </main>
+</div>
+</body>
+</html>

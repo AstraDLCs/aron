@@ -1,7 +1,7 @@
 import { load, type Store } from '@tauri-apps/plugin-store';
 
 /** URL de la API por defecto. ÚNICO lugar donde se define el endpoint oficial. */
-export const DEFAULT_API_BASE_URL = 'http://localhost:8000';
+export const DEFAULT_API_BASE_URL = 'https://aron.astra-industria.dev';
 
 export type AppConfig = { apiBaseUrl: string; cvFolder: string | null; syncOnOpen: boolean };
 

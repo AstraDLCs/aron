@@ -32,6 +32,8 @@ class Settings(BaseSettings):
     ]
 
     rrhh_root: Path = Path("/data/rrhh")
+    # Instaladores que ofrece la página pública "/" (se usa el .msi de versión más alta).
+    downloads_dir: Path = Path(__file__).resolve().parent.parent / "downloads"
 
     openrouter_api_key: str = ""
     openrouter_base_url: str = "https://openrouter.ai/api/v1"

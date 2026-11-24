@@ -138,24 +138,41 @@ npm install
 npm run tauri dev
 ```
 
-Por defecto la app apunta a `http://localhost:8000` (la API de Docker Compose en la misma PC).
+Por defecto la app apunta al servidor oficial, `https://aron.astra-industria.dev`. Para trabajar contra la API
+local, cambia el servidor a `http://localhost:8000` en el diálogo «Servidor» de la pantalla de inicio de sesión.
 
-### Generar el instalador
-
-```
-npx tauri build --config tauri.release.json
-```
-
-`tauri.release.json` compila el frontend en `dist-release` antes de empaquetar. El instalador queda en:
+### Generar el instalador (.msi)
 
 ```
-rebuild/tauri/src-tauri/target/release/bundle/nsis/Pulso Laboral_0.1.0_x64-setup.exe
+npx tauri build --config tauri.release.json --bundles msi
 ```
+
+`tauri.release.json` compila el frontend en `dist-release` antes de empaquetar. La primera vez, Tauri descarga
+WiX Toolset. El instalador queda en:
+
+```
+rebuild/tauri/src-tauri/target/release/bundle/msi/Pulso Laboral_<versión>_x64_es-ES.msi
+```
+
+Sin `--bundles msi` se generan el `.msi` y el instalador NSIS (`bundle/nsis/…-setup.exe`).
+
+### Publicar una versión en la página de descarga
+
+La API sirve en `/` una página pública para descargar la app, y el instalador en `/descargar/windows`. Ambas
+rutas son públicas; las de `/api` siguen pidiendo sesión. La página ofrece el `.msi` de versión más alta que
+encuentra en `rebuild/fastapi/downloads/` y muestra su tamaño y su huella SHA-256.
+
+1. Subir `version` en `rebuild/tauri/src-tauri/tauri.conf.json`. Una versión mayor permite que el MSI actualice
+   una instalación anterior.
+2. Generar el `.msi` (ver arriba).
+3. Copiarlo a `rebuild/fastapi/downloads/` con el nombre `PulsoLaboral_<versión>_x64_es-ES.msi`, sin espacios.
+   Borrar el anterior para no engordar el repositorio.
+4. Hacer commit y push; Dokploy lo publica en el siguiente despliegue.
 
 ### Servidor de la API
 
-- Para fijar el endpoint oficial en el instalador, cambiar `DEFAULT_API_BASE_URL` en
-  `rebuild/tauri/src/api/config.ts` (hoy `http://localhost:8000`) y volver a generar el instalador.
+- El endpoint oficial está en `DEFAULT_API_BASE_URL`, en `rebuild/tauri/src/api/config.ts`
+  (`https://aron.astra-industria.dev`). Si cambia, hay que volver a generar el instalador.
 - Cada usuario también puede cambiarlo sin recompilar: Configuración → Servidor, o el diálogo «Servidor» de la
   pantalla de inicio de sesión. Los servidores remotos deben usar `https` (`http` solo se admite para localhost).
 

@@ -369,7 +369,7 @@ export function SettingsModule({ state, onState, refresh }: SettingsModuleProps)
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
         <div className="space-y-5">
           <SettingsCard icon={<Server className="h-4 w-4" />} title="Servidor" subtitle="Dirección de la API de Pulso Laboral.">
-            <Field label="URL del servidor" hint="Ejemplo: http://localhost:8000 o http://192.168.1.20:8000">
+            <Field label="URL del servidor" hint="Ejemplo: https://aron.astra-industria.dev, o http://localhost:8000 para una API local">
               <input className={`${inputClass} font-mono-tabular`} value={url} onChange={(e) => setUrl(e.target.value)} />
             </Field>
             <div className="mt-3 flex flex-wrap gap-2">
