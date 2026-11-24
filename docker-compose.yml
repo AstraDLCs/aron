@@ -1,0 +1,73 @@
+# Pulso Laboral — API (FastAPI + worker IA + PostgreSQL).
+#
+# Este archivo es el de PRODUCCIÓN (Dokploy u otro servidor). Las variables se leen del `.env` que está
+# junto a este archivo (Dokploy lo escribe desde la pestaña "Environment"); ver `.env.example`.
+# Sin puertos publicados: en Dokploy se asigna un dominio al servicio `api`, puerto 8000.
+#
+# Desarrollo local (puerto 8000, código montado, recarga en caliente y base de pruebas):
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+
+x-app-env: &app-env
+  DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-pulso}:${POSTGRES_PASSWORD:-pulso}@db:5432/${POSTGRES_DB:-pulso}
+  JWT_SECRET: ${JWT_SECRET:?Falta JWT_SECRET (al menos 32 caracteres aleatorios)}
+  JWT_EXPIRE_HOURS: ${JWT_EXPIRE_HOURS:-12}
+  REGISTRATION_MODE: ${REGISTRATION_MODE:-invite}
+  INVITE_CODE: ${INVITE_CODE:-}
+  CORS_ORIGINS: '${CORS_ORIGINS:-["http://tauri.localhost","tauri://localhost"]}'
+  RRHH_ROOT: /data/rrhh
+  OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+  OPENROUTER_BASE_URL: ${OPENROUTER_BASE_URL:-https://openrouter.ai/api/v1}
+  WORKER_RATE_PER_MINUTE: ${WORKER_RATE_PER_MINUTE:-15}
+  SERVER_SCAN_INTERVAL_S: ${SERVER_SCAN_INTERVAL_S:-300}
+  COMPANY_NAME_DEFAULT: ${COMPANY_NAME_DEFAULT:-Compañía Minera Las Bravas}
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-pulso}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pulso}
+      POSTGRES_DB: ${POSTGRES_DB:-pulso}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build: ./fastapi
+    restart: unless-stopped
+    command: ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips='*'"]
+    environment: *app-env
+    expose:
+      - "8000"
+    volumes:
+      - rrhh_data:/data/rrhh
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health', timeout=3)"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  # Clasifica los CVs en cola con OpenRouter (sin OPENROUTER_API_KEY solo espera).
+  worker:
+    build: ./fastapi
+    restart: unless-stopped
+    command: ["python", "-m", "app.worker"]
+    environment: *app-env
+    volumes:
+      - rrhh_data:/data/rrhh
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  rrhh_data:

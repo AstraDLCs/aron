@@ -2,14 +2,21 @@
 
 ## API (FastAPI + PostgreSQL)
 
-Todo el código de la API está en `rebuild/fastapi`. Los comandos se ejecutan desde esa carpeta.
+El código de la API está en `rebuild/fastapi`. El `docker-compose.yml` está en la **raíz del repositorio**
+(`rebuild/`), y los comandos `docker compose` se ejecutan desde ahí.
+
+| Archivo | Para qué |
+|---|---|
+| `docker-compose.yml` | Producción (Dokploy u otro servidor): sin puertos publicados, base y CVs en volúmenes con nombre |
+| `docker-compose.dev.yml` | Solo local: puerto 8000, código montado con recarga, base de pruebas y CVs en `fastapi/data/rrhh` |
+| `.env.example` | Variables; copiar a `.env` (ignorado por git) junto al compose |
 
 ### Requisitos
 
 - Docker y Docker Compose.
 - Una clave de OpenRouter (opcional: sin ella las postulaciones quedan en `Sin IA`, con puntaje por reglas).
 
-### Puesta en marcha
+### Desarrollo local
 
 1. Copiar la configuración y completarla:
 
@@ -25,11 +32,15 @@ Todo el código de la API está en `rebuild/fastapi`. Los comandos se ejecutan d
      python -c "import secrets;print(secrets.token_urlsafe(48))"
      ```
 
+   - `POSTGRES_PASSWORD`: en local puede quedar `pulso`.
+   - `REGISTRATION_MODE=open` para registrarse sin código.
    - `OPENROUTER_API_KEY=<tu clave>`, si se usará la IA (se obtiene en https://openrouter.ai/keys).
+   - Para no escribir los dos `-f` en cada comando, descomentar `COMPOSE_FILE` y `COMPOSE_PATH_SEPARATOR`
+     (en Windows el separador es `;`; en Linux y Mac, `:`).
 2. Levantar los servicios (base de datos, API y worker de la IA):
 
    ```
-   docker compose up -d --build
+   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
    ```
 
    La API queda en `http://localhost:8000` (`GET /api/health`). Las migraciones se aplican al iniciar.
@@ -40,14 +51,40 @@ Todo el código de la API está en `rebuild/fastapi`. Los comandos se ejecutan d
    ```
 
    Carga la empresa Compañía Minera Las Bravas, 28 puestos, 15 requerimientos (32 plazas), 6 fuentes y 2 criterios.
-4. Pruebas: `docker compose run --rm api pytest -q`.
+4. Pruebas: `docker compose -f docker-compose.yml -f docker-compose.dev.yml run --rm api pytest -q`.
+
+### Despliegue con Dokploy (Docker Compose)
+
+1. Crear un servicio **Compose** que apunte a este repositorio, rama `main`, con **Compose Path**
+   `./docker-compose.yml`.
+2. En **Environment**, cargar las variables de `.env.example`. Como mínimo:
+   - `JWT_SECRET`, de 32 caracteres o más;
+   - `POSTGRES_PASSWORD`, solo con letras, números, `-` o `_`;
+   - `REGISTRATION_MODE=invite` con un `INVITE_CODE` secreto;
+   - `OPENROUTER_API_KEY`.
+
+   Dokploy escribe esas variables en un `.env` junto al compose, y el compose se las pasa a los contenedores. Si
+   falta `JWT_SECRET`, el despliegue se detiene con el mensaje «Falta JWT_SECRET».
+3. En **Domains**, agregar el dominio al servicio `api`, puerto `8000`, con HTTPS (Let's Encrypt). La app de
+   escritorio exige `https://` para servidores que no sean `localhost`.
+4. Desplegar. Las migraciones se aplican solas al iniciar la API.
+5. Datos de demostración (opcional, solo con la base vacía): en la terminal del contenedor `api`, ejecutar
+   `python -m app.seed --demo`.
+6. Hacer **Volume Backups** de los volúmenes `pgdata` (base de datos) y `rrhh_data` (archivos de CV). Dokploy solo
+   respalda volúmenes con nombre.
+
+Avisos:
+
+- No usar `docker-compose.dev.yml` en el servidor.
+- Al eliminar el servicio en Dokploy, si se marca borrar volúmenes, se pierden la base y los CVs.
 
 ### Respaldo y restauración
 
 - `GET /api/datacenter/backup` descarga un JSON con todos los datos de negocio (no incluye cuentas ni bitácora).
 - `POST /api/datacenter/restore` con `{"confirm": "RESTAURAR", "backup": {...}}` reemplaza los datos de negocio.
-  Marca como faltantes los CV cuyo archivo no está en `data/rrhh`. Las cuentas y la bitácora no se tocan.
-- Los archivos de CV viven en `./data/rrhh` (montada en `/data/rrhh`): respaldarla aparte.
+  Marca como faltantes los CV cuyo archivo no está en la carpeta de CVs. Las cuentas y la bitácora no se tocan.
+- Los archivos de CV viven en `/data/rrhh` dentro de los contenedores. En el servidor están en el volumen
+  `rrhh_data`; en local, en `fastapi/data/rrhh`. Hay que respaldarlos aparte.
 
 ### Modelo de IA
 
@@ -73,9 +110,10 @@ Se puede cambiar desde la configuración de la app, pero **solo se aceptan model
 - [ ] `JWT_SECRET` propio, largo y secreto (no reutilizar el de pruebas).
 - [ ] `REGISTRATION_MODE=invite` y un `INVITE_CODE` secreto: solo podrá crear cuenta quien conozca el código.
 - [ ] `CORS_ORIGINS` ajustado al origen de la app de escritorio.
-- [ ] API detrás de un proxy inverso con HTTPS, con límite de peticiones (rate limiting) en `/api/auth/*`.
-      No exponer el puerto de PostgreSQL.
-- [ ] Copias de seguridad periódicas del volumen `pgdata` (base de datos) y de `./data/rrhh` (archivos de CV).
+- [ ] `POSTGRES_PASSWORD` propio (no `pulso`).
+- [ ] API detrás de un proxy inverso con HTTPS (en Dokploy, el dominio con Let's Encrypt), con límite de
+      peticiones (rate limiting) en `/api/auth/*`. No exponer el puerto de PostgreSQL.
+- [ ] Copias de seguridad periódicas de los volúmenes `pgdata` (base de datos) y `rrhh_data` (archivos de CV).
 - [ ] Probar la restauración de una copia al menos una vez.
 - [ ] Baja de cuentas: `docker compose exec api python -m app.cli users deactivate <email>`.
 
@@ -134,7 +172,8 @@ Cuatro formas de cargar CV:
 1. **Subir en la app**: botón de subir CV dentro del puesto.
 2. **Importar carpeta**: elegir una carpeta con la estructura anterior.
 3. **Sincronizar la carpeta de la PC**: se configura una vez; se sincroniza al abrir la app y con «Sincronizar ahora».
-4. **Copiar en el servidor**: dejar los archivos en `rebuild/fastapi/data/rrhh`; el servidor revisa esa carpeta cada 5 minutos
+4. **Copiar en el servidor**: dejar los archivos en la carpeta de CVs del servidor (en local,
+   `rebuild/fastapi/data/rrhh`; en Dokploy, el volumen `rrhh_data`). El servidor revisa esa carpeta cada 5 minutos
    (`SERVER_SCAN_INTERVAL_S=300`).
 
 ### Flujo de uso
