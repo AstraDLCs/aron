@@ -9,6 +9,7 @@ from app.routers import (
     auth,
     candidates,
     criteria,
+    datacenter,
     cv_files,
     health,
     persons,
@@ -35,7 +36,7 @@ def create_app() -> FastAPI:
     api.include_router(health.router)
     api.include_router(auth.router)
     api.include_router(users.router)
-    for module in (audit, reports, state, positions, sources, requirements, settings_router, cv_files, persons, candidates, criteria,
+    for module in (datacenter, audit, reports, state, positions, sources, requirements, settings_router, cv_files, persons, candidates, criteria,
                    ai_queue):
         api.include_router(module.router)
     app.include_router(api)
