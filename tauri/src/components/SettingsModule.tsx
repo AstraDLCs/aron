@@ -559,7 +559,7 @@ export function SettingsModule({ state, onState, refresh }: SettingsModuleProps)
                     max={95}
                     value={threshold}
                     onChange={(e) => setThreshold(Math.min(95, Math.max(50, Number(e.target.value) || 50)))}
-                    className={`${inputClass} w-20 text-center font-mono-tabular`}
+                    className="h-[38px] w-20 shrink-0 rounded-lg border border-[#D8DCE0] bg-white px-2 text-center font-mono-tabular text-sm text-[#23272E] focus:border-[#B26337] focus:outline-none"
                   />
                 </div>
               </Field>

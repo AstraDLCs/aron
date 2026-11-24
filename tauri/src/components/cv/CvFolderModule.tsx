@@ -679,7 +679,7 @@ function MoveCvDialog({
   const positionOptions = useMemo(
     () =>
       state.positions
-        .map((p) => ({ id: p.id, label: positionPath(p.id, state.positions) }))
+        .map((p) => ({ id: p.id, label: p.area ? `${p.name} — ${p.area}` : p.name }))
         .sort((a, b) => a.label.localeCompare(b.label, 'es')),
     [state.positions],
   );

@@ -66,7 +66,7 @@ export function UploadCvDialog({ open, state, initialPositionId, initialSourceId
   const positionOptions = useMemo(
     () =>
       positions
-        .map((p) => ({ id: p.id, label: positionPath(p.id, positions), open: p.openRequirementsCount }))
+        .map((p) => ({ id: p.id, label: p.area ? `${p.name} — ${p.area}` : p.name, open: p.openRequirementsCount }))
         .sort((a, b) => a.label.localeCompare(b.label, 'es')),
     [positions],
   );
