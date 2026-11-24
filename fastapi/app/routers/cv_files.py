@@ -18,7 +18,7 @@ from app.models.people import Candidate, CvFile, DeletedCvHash, Person
 from app.routers._util import DbDep
 from app.schemas.people import CvCheckIn, CvFileUpdate
 from app.services import ingest
-from app.services.candidate_rules import apply_rule_scores
+from app.services.candidate_rules import apply_rule_scores, criteria_views
 from app.services.persons import delete_person
 from app.services.snapshot import build_state, state_response
 from app.services.storage import RrhhStorage, get_storage
@@ -202,7 +202,7 @@ def move_cv(cv_id: str, body: CvFileUpdate, request: Request, user: CurrentUser,
                 candidate.requirement_id = requirement.id if requirement else None
                 ingest.reset_ai_result(candidate)
                 candidate.ai_status = ingest.initial_ai_status(db, cv.text_status)
-                apply_rule_scores(candidate, person, new_pos)
+                apply_rule_scores(candidate, person, new_pos, criteria_views(db))
         db.flush()
         log_action(
             db, actor=user, action="cv.move", entity_type="cv_file", entity_id=cv.id,

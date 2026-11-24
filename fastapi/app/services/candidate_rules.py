@@ -1,11 +1,13 @@
 """Puntaje por reglas de una postulación (pilares, bono y dictamen) a partir de la persona y el puesto.
 
 Se recalcula cuando cambia algo que lo alimenta: al ingresar el CV, al mover la postulación de puesto, al
-editar o unir a la persona y (Tarea 10) al cambiar su evaluación psicológica.
+editar o unir a la persona, al crear o editar un criterio (`services/criteria.py`) y (Tarea 10) al cambiar su
+evaluación psicológica.
 """
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.models.criteria import RecruitmentCriterion
 from app.models.org import Position
 from app.models.people import Candidate, Person
 from app.services.scoring import compute_rule_scores, global_index, rule_report_text
@@ -42,16 +44,28 @@ def candidate_view(person: Person, candidate: Candidate, position: Position) -> 
     }
 
 
-def apply_rule_scores(
-    candidate: Candidate, person: Person, position: Position, criteria: list[dict] | None = None
-) -> None:
+def criterion_view(c: RecruitmentCriterion) -> dict:
+    """El criterio con las claves que lee `compute_rule_scores`."""
+    return {
+        "title": c.title, "appliesToDepartment": c.applies_to_department, "weightLabel": c.weight_label,
+        "ruleText": c.rule_text, "isCorrection": c.is_correction,
+    }
+
+
+def criteria_views(db: Session) -> list[dict]:
+    """Todos los criterios (el filtro por área lo hace `compute_rule_scores`)."""
+    rows = db.scalars(select(RecruitmentCriterion).order_by(RecruitmentCriterion.created_at, RecruitmentCriterion.id))
+    return [criterion_view(c) for c in rows]
+
+
+def apply_rule_scores(candidate: Candidate, person: Person, position: Position, criteria: list[dict]) -> None:
     """Guarda en la postulación los pilares, el bono, los criterios aplicados y el dictamen de reglas.
 
-    `criteria` queda vacío hasta que exista la tabla de criterios (Tarea 6).
+    `criteria` es la lista de `criteria_views(db)`: quien llama la carga una vez para varias postulaciones.
     """
     pos = position_view(position)
     view = candidate_view(person, candidate, position)
-    scores = compute_rule_scores(view, pos, criteria or [])
+    scores = compute_rule_scores(view, pos, criteria)
     overall = global_index(
         scores["technical"], scores["experience"], scores["education"], person_psych_score(person),
         scores["criteriaBonus"],
@@ -66,5 +80,6 @@ def apply_rule_scores(
 
 def rescore_person(db: Session, person: Person) -> None:
     """Recalcula el puntaje por reglas de todas las postulaciones de la persona."""
+    criteria = criteria_views(db)
     for cand in db.scalars(select(Candidate).where(Candidate.person_id == person.id)):
-        apply_rule_scores(cand, person, db.get(Position, cand.position_id))
+        apply_rule_scores(cand, person, db.get(Position, cand.position_id), criteria)

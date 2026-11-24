@@ -26,7 +26,7 @@ from app.models.org import Position, Requirement, Source
 from app.models.people import Candidate, CvFile, DeletedCvHash, Person
 from app.models.user import User
 from app.services.app_settings import get_app_settings
-from app.services.candidate_rules import apply_rule_scores, position_view
+from app.services.candidate_rules import apply_rule_scores, criteria_views, position_view
 from app.services.cv_parser import UNKNOWN_NAME, ParsedCv, parse_cv_text
 from app.services.persons import link_or_create_person, with_name_parts
 from app.services.storage import RrhhStorage
@@ -341,7 +341,7 @@ def ingest_cv(
             requirement_id=requirement.id if requirement else None, source_id=source.id, interview_notes="",
             created_by_name=actor_name(actor), ai_status=initial_ai_status(db, text_status),
         )
-        apply_rule_scores(candidate, person, position)
+        apply_rule_scores(candidate, person, position, criteria_views(db))
         db.add(candidate)
         db.flush()
 
@@ -398,7 +398,7 @@ def create_manual_candidate(
         # el texto armado con los datos siempre tiene al menos el nombre: se puede clasificar
         ai_status=initial_ai_status(db, "ok" if manual_text(person, interview_notes) else "empty"),
     )
-    apply_rule_scores(candidate, person, position)
+    apply_rule_scores(candidate, person, position, criteria_views(db))
     db.add(candidate)
     db.flush()
     log_action(

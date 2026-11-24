@@ -1,8 +1,8 @@
 """Foto del estado (`GET /api/state`): todo lo que la app necesita, con las claves exactas del contrato.
 
 Cada colección tiene su función `_xxx`. Las postulaciones y los CVs bloqueados se arman en
-`snapshot_candidates`. Las tareas posteriores reemplazan las que hoy devuelven `[]` (criterios, catálogo de
-pruebas, conversaciones).
+`snapshot_candidates`. Las tareas posteriores reemplazan las que hoy devuelven `[]` (catálogo de pruebas,
+conversaciones).
 """
 from collections import Counter
 
@@ -10,11 +10,13 @@ from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
+from app.models.criteria import RecruitmentCriterion
 from app.models.org import Position, Requirement, Source
 from app.models.people import Candidate
 from app.models.settings import AppSettings
 from app.models.user import User
 from app.schemas.auth import UserOut
+from app.schemas.criteria import CriterionOut
 from app.schemas.org import AiQueueOut, JobBoardOut, JobNeedOut, PositionOut, SettingsOut
 from app.services.app_settings import get_app_settings
 from app.services.scoring import compute_kpis
@@ -115,6 +117,19 @@ def _job_boards(db: Session) -> list[dict]:
     return out
 
 
+def criteria_payload(db: Session) -> list[dict]:
+    rows = db.scalars(select(RecruitmentCriterion).order_by(RecruitmentCriterion.created_at, RecruitmentCriterion.id))
+    return [
+        _dump(CriterionOut(
+            id=c.id, title=c.title, applies_to_department=c.applies_to_department, weight_label=c.weight_label,
+            rule_text=c.rule_text, is_correction=c.is_correction, wrong_ai_assumption=c.wrong_ai_assumption,
+            learned_from_candidate=c.learned_from_candidate, created_by=c.created_by_name,
+            created_at=c.created_at, updated_at=c.updated_at,
+        ))
+        for c in rows
+    ]
+
+
 def _settings_block(row: AppSettings) -> dict:
     return _dump(SettingsOut(
         company_name=row.company_name, ai_model=row.ai_model, ai_fallback_models=list(row.ai_fallback_models),
@@ -156,7 +171,7 @@ def build_state(db: Session, user: User) -> dict:
         "jobBoards": job_boards,
         "candidates": candidates,
         "blockedCvFiles": blocked_payload(db),
-        "recruitmentCriteria": [],
+        "recruitmentCriteria": criteria_payload(db),
         "testCatalog": [],
         "aiConversations": [],
         "kpis": compute_kpis(job_needs, job_boards, candidates),

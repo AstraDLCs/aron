@@ -1,9 +1,10 @@
 from datetime import datetime
-from typing import Annotated, ClassVar
+from typing import Annotated, ClassVar, Literal
 
 from pydantic import AfterValidator, Field, StringConstraints
 
 from app.schemas.common import CamelModel
+from app.schemas.criteria import Weight
 from app.schemas.org import _Patch
 
 Sha256 = Annotated[str, StringConstraints(strip_whitespace=True, pattern=r"^[0-9a-fA-F]{64}$"),
@@ -76,6 +77,19 @@ class ManualCandidateIn(CamelModel):
     phone: Annotated[str, StringConstraints(strip_whitespace=True, max_length=60)] = ""
     document_id: Annotated[str, StringConstraints(strip_whitespace=True, max_length=30)] = ""
     interview_notes: Annotated[str, StringConstraints(max_length=5000)] = ""
+
+
+class DecisionIn(CamelModel):
+    decision: Literal["Pendiente de revisión", "Aprobado", "Rechazado", "Contratado"]
+    manager_score: int | None = Field(default=None, ge=0, le=100)
+    manager_notes: str | None = None
+    requirement_id: str | None = None
+    teach_ai: bool = False
+    criterion_title: str | None = None
+    criterion_rule: str | None = None
+    criterion_weight: Weight = "Importante"
+    is_correction: bool = False
+    wrong_ai_assumption: str | None = None
 
 
 # --- foto ------------------------------------------------------------------
