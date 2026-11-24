@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pulso-laboral-api"
+version = "0.1.0"
+description = "API de Pulso Laboral (reclutamiento minero)"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "sqlalchemy>=2",
+    "psycopg[binary]>=3",
+    "alembic",
+    "pydantic>=2",
+    "pydantic-settings",
+    "pyjwt",
+    "pwdlib[argon2]",
+    "python-multipart",
+    "httpx",
+    "pypdf",
+    "python-docx",
+    "openpyxl",
+    "tzdata",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "respx",
+    "httpx2",  # cliente de starlette.testclient (httpx está deprecado ahí)
+    "fpdf2",
+]
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
