@@ -18,6 +18,7 @@ from app.models.user import User
 from app.schemas.auth import UserOut
 from app.schemas.criteria import CriterionOut
 from app.schemas.org import AiQueueOut, JobBoardOut, JobNeedOut, PositionOut, SettingsOut
+from app.services.ai_chat import conversations_payload
 from app.services.app_settings import effective_ai_model, effective_fallback_models, get_app_settings
 from app.services.scoring import compute_kpis
 from app.services.snapshot_candidates import blocked_payload, candidates_payload
@@ -179,7 +180,7 @@ def build_state(db: Session, user: User) -> dict:
         "blockedCvFiles": blocked_payload(db),
         "recruitmentCriteria": criteria_payload(db),
         "testCatalog": [],
-        "aiConversations": [],
+        "aiConversations": conversations_payload(db),
         "kpis": compute_kpis(job_needs, job_boards, candidates),
     }
 
