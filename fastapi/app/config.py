@@ -7,10 +7,16 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _DEV_SECRET = "dev-secret-cambiar-en-produccion"
 
-# Modelos gratuitos (`:free`) de OpenRouter con instrucciones, contexto >= 32k y salida JSON; elegidos el
-# 2026-11-24 con `GET https://openrouter.ai/api/v1/models`. Se usan mientras la configuración no fije otros.
-DEFAULT_AI_MODEL = "google/gemma-4-31b-it:free"
-DEFAULT_AI_FALLBACK_MODELS = ["google/gemma-4-26b-a4b-it:free", "inclusionai/ling-3.2-flash:free"]
+# Modelos gratuitos (`:free`) de OpenRouter con instrucciones, contexto >= 32k y salida JSON. Se usan mientras la
+# configuración no fije otros y, además, al final de cualquier cadena de respaldo: si los modelos elegidos están
+# saturados (429 «rate-limited upstream»), se prueban estos. El 2026-11-24 los gemma respondían 429 y nemotron, 200.
+DEFAULT_AI_MODEL = "nvidia/nemotron-3-ultra-550b-a55b:free"
+DEFAULT_AI_FALLBACK_MODELS = [
+    "google/gemma-4-31b-it:free",
+    "google/gemma-4-26b-a4b-it:free",
+    "inclusionai/ling-3.2-flash:free",
+]
+MAX_FALLBACK_MODELS = 5
 
 
 # Orígenes de la app de escritorio Tauri (Windows usa http://tauri.localhost). Se permiten SIEMPRE, sin

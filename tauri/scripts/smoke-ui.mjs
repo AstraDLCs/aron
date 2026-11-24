@@ -168,6 +168,15 @@ try {
     });
   }
 
+  await step('Configuración: estado del worker de IA', async () => {
+    // La última pestaña abierta es Configuración: baja hasta la cola de la IA.
+    const found = await evaluate(`(() => {
+      const h = [...document.querySelectorAll('h1,h2,h3,p,span,div')].find((e) => e.textContent.trim() === 'Cola de la IA');
+      if (!h) return false; h.scrollIntoView({ block: 'start' }); return true; })()`);
+    if (!found) throw new Error('no se encontró el panel «Cola de la IA»');
+    await waitFor(`document.body.innerText.includes('Ahora:')`, 'bloque «Ahora:» con el estado del worker');
+  });
+
   await step('Subir CV: «+ Nueva fuente…» y «+ Nuevo puesto…»', async () => {
     await click('Candidatos');
     await sleep(500);

@@ -18,7 +18,7 @@ from app.constants import AI_ACTOR, ALL_AREAS, CV_TEXT_LIMIT
 from app.models.org import Position, Requirement
 from app.models.people import Candidate, CvFile, Person
 from app.services import ingest
-from app.services.app_settings import effective_ai_model, effective_fallback_models, get_app_settings
+from app.services.app_settings import effective_ai_model, fallback_chain, get_app_settings
 from app.services.candidate_rules import criteria_views, rescore_person
 from app.services.openrouter import OpenRouterClient
 from app.services.persons import apply_person_fields, refresh_possible_same, with_name_parts
@@ -421,7 +421,7 @@ def classify_candidate(db: Session, candidate: Candidate, client: OpenRouterClie
         ingest.candidate_text(db, candidate), settings.ai_preapprove_threshold,
     )
     result, model_used = _call_model(
-        client, messages, model=effective_ai_model(settings), fallback_models=effective_fallback_models(settings)
+        client, messages, model=effective_ai_model(settings), fallback_models=fallback_chain(settings)
     )
 
     verdict = final_verdict(result.veredicto, result.puntajeAptitud, settings.ai_preapprove_threshold)

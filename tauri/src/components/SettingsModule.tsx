@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 import {
   Building2,
   Bot,
+  Loader2,
   CheckCircle2,
   FolderOpen,
   FolderSync,
@@ -23,6 +24,7 @@ import { runSync, anyErrorMessage, type SyncSummary } from '../sync/runSync';
 import { saveLastSummary } from '../sync/autoSync';
 import { Badge, Button, Card, Field, Notice, Spinner, Toggle, formatDateTime, inputClass } from './cv/ui';
 import { SyncSummaryDialog } from './cv/SyncSummaryDialog';
+import { agoText, workerSilentFor, workerStale } from '../utils/aiQueue';
 
 export interface SettingsModuleProps {
   state: AppState;
@@ -121,6 +123,45 @@ function ModelPicker({
         )}
       </div>
     </Field>
+  );
+}
+
+/** Qué está haciendo el worker de IA ahora, cuándo dio señales y por qué espera (si espera). */
+function WorkerActivity({ queue }: { queue: AppState['aiQueue'] }) {
+  const silent = workerSilentFor(queue);
+  const stale = workerStale(queue);
+  return (
+    <div className="mt-3 space-y-2 rounded-lg border border-[#E2E4E8] bg-[#F7F7F8] p-3 text-sm">
+      <div className="flex items-start gap-2">
+        {queue.processing > 0 ? (
+          <Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-[#B26337]" />
+        ) : (
+          <Bot className={`mt-0.5 h-4 w-4 shrink-0 ${stale ? 'text-red-600' : 'text-[#5C626D]'}`} />
+        )}
+        <div className="min-w-0">
+          <p className="font-semibold text-[#23272E]">
+            Ahora: {queue.workerStatus || (silent == null ? 'el worker todavía no informó su estado' : '—')}
+          </p>
+          <p className="text-xs text-[#5C626D]">
+            {silent == null
+              ? 'Sin señales del worker.'
+              : `Última señal del worker ${agoText(silent)}.`}
+            {queue.nextAttemptAt && ` Próximo intento: ${formatDateTime(queue.nextAttemptAt)}.`}
+          </p>
+        </div>
+      </div>
+      {stale && queue.queued > 0 && (
+        <Notice kind="error">
+          El worker no da señales: los CV en cola no se están procesando. En el servidor, revisa que el contenedor
+          «worker» esté encendido (en Dokploy: el servicio, pestaña Logs).
+        </Notice>
+      )}
+      {queue.lastError && (
+        <p className="text-xs text-[#5C626D]">
+          Último motivo de espera o error: <span className="text-[#8A3B32]">{queue.lastError}</span>
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -623,6 +664,7 @@ export function SettingsModule({ state, onState, refresh }: SettingsModuleProps)
                 </span>
               )}
             </div>
+            {queue && <WorkerActivity queue={queue} />}
             {queue?.pausedUntil && (
               <div className="mt-3">
                 <Notice kind="warning">

@@ -56,6 +56,11 @@ export interface AiQueueStatus {
   pausedUntil: string | null;
   aiEnabled: boolean;
   model: string;
+  /** Qué está haciendo el worker y cuándo dio señales (servidores anteriores a la 0.2.4 no lo envían). */
+  workerSeenAt?: string | null;
+  workerStatus?: string;
+  nextAttemptAt?: string | null;
+  lastError?: string | null;
 }
 
 export interface Position {

@@ -27,8 +27,8 @@ class OpenRouterError(Exception):
 class PerMinuteRateLimit(OpenRouterError):
     """429 por límite por minuto: reintentar después de `retry_after_s` segundos."""
 
-    def __init__(self, retry_after_s: int = DEFAULT_RETRY_AFTER_S):
-        super().__init__(f"Límite por minuto de OpenRouter; reintentar en {retry_after_s} s")
+    def __init__(self, retry_after_s: int = DEFAULT_RETRY_AFTER_S, message: str | None = None):
+        super().__init__(message or f"Límite por minuto de OpenRouter; reintentar en {retry_after_s} s")
         self.retry_after_s = retry_after_s
 
 
@@ -130,9 +130,34 @@ class OpenRouterClient:
         json_mode: bool = False,
         max_tokens: int = 2000,
     ) -> ChatResult:
+        """Prueba los modelos en orden y devuelve la primera respuesta válida.
+
+        Si un modelo está saturado (429 por minuto, típico de los gratuitos: «rate-limited upstream») o falla, pasa
+        al siguiente. El límite diario de la cuenta corta enseguida: ningún modelo gratuito podría responder.
+        Si todos fallan y alguno estaba saturado, lanza `PerMinuteRateLimit` (se reintenta sin gastar intentos).
+        """
+        chain = list(dict.fromkeys([model, *(fallback_models or [])]))
+        saturated: list[PerMinuteRateLimit] = []
+        last_error: OpenRouterError | None = None
+        for candidate_model in chain:
+            try:
+                return self._chat_once(messages, candidate_model, json_mode=json_mode, max_tokens=max_tokens)
+            except DailyLimitReached:
+                raise
+            except PerMinuteRateLimit as exc:
+                saturated.append(exc)
+            except OpenRouterError as exc:
+                last_error = exc
+        if saturated:
+            wait = min(e.retry_after_s for e in saturated)
+            raise PerMinuteRateLimit(
+                wait,
+                f"Los modelos de IA están saturados ({len(chain)} probados); se reintenta automáticamente en {wait} s",
+            )
+        raise last_error or OpenRouterError("Ningún modelo de IA respondió")
+
+    def _chat_once(self, messages: list[dict], model: str, *, json_mode: bool, max_tokens: int) -> ChatResult:
         body: dict = {"model": model, "messages": messages, "max_tokens": max_tokens, "temperature": 0.2}
-        if fallback_models:
-            body["models"] = [model, *fallback_models]
         if json_mode:
             body["response_format"] = {"type": "json_object"}
         response = self._request("POST", "/chat/completions", json=body)

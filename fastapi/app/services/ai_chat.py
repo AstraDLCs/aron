@@ -14,7 +14,7 @@ from app.models.criteria import RecruitmentCriterion
 from app.models.org import Position
 from app.models.people import Candidate, CvFile, Person
 from app.models.user import User
-from app.services.app_settings import effective_ai_model, effective_fallback_models, get_app_settings
+from app.services.app_settings import effective_ai_model, fallback_chain, get_app_settings
 from app.services.classifier import _CV_MARK, extract_json_object
 from app.services.criteria import create_criterion
 from app.services.openrouter import OpenRouterClient
@@ -70,7 +70,7 @@ def _context(db: Session, candidate: Candidate) -> str:
 
 def _model_args(db: Session) -> dict:
     row = get_app_settings(db)
-    return {"model": effective_ai_model(row), "fallback_models": effective_fallback_models(row)}
+    return {"model": effective_ai_model(row), "fallback_models": fallback_chain(row)}
 
 
 def _format_report(report: dict) -> str:

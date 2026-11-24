@@ -26,6 +26,7 @@ def test_state_contract_keys(client, make_user):
     assert s["aiQueue"] == {
         "queued": 0, "processing": 0, "errors": 0, "sinIa": 0, "pausedUntil": None,
         "aiEnabled": False, "model": s["settings"]["aiModel"],
+        "workerSeenAt": None, "workerStatus": "", "nextAttemptAt": None, "lastError": None,
     }
     for key in ("positions", "jobNeeds", "jobBoards", "candidates", "blockedCvFiles",
                 "recruitmentCriteria", "testCatalog", "aiConversations"):

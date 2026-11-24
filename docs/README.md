@@ -92,10 +92,19 @@ Avisos:
 
 ### Modelo de IA
 
-Modelo predeterminado (`DEFAULT_AI_MODEL` en `fastapi/app/config.py`): `google/gemma-4-31b-it:free`
-(OpenRouter, elegido el 2026-11-24), con respaldos (`DEFAULT_AI_FALLBACK_MODELS`)
-`google/gemma-4-26b-a4b-it:free` e `inclusionai/ling-3.2-flash:free`.
+Modelo predeterminado (`DEFAULT_AI_MODEL` en `fastapi/app/config.py`): `nvidia/nemotron-3-ultra-550b-a55b:free`,
+con respaldos (`DEFAULT_AI_FALLBACK_MODELS`) `google/gemma-4-31b-it:free`, `google/gemma-4-26b-a4b-it:free` e
+`inclusionai/ling-3.2-flash:free`.
 Se puede cambiar desde la configuración de la app, pero **solo se aceptan modelos gratuitos** (id terminado en `:free`).
+
+- **Modelos saturados:** los gratuitos suelen responder 429 «rate-limited upstream». La API prueba los modelos en
+  orden: el elegido, sus respaldos y, al final, la cadena predeterminada (hasta 6). Si todos están saturados, la
+  postulación sigue «En cola» y se reintenta sola sin gastar intentos. El límite diario de la cuenta pausa la cola
+  hasta el reinicio.
+- **Ver qué pasa:** el worker deja su estado cada pocos segundos («Clasificando a…», «Esperando para reintentar…»,
+  «Sin clave de OpenRouter…»). La app lo muestra en el indicador de IA de la barra superior y en Configuración →
+  Cola de la IA, junto con la última señal, el próximo intento y el último motivo. Si el worker no da señales en
+  90 s, la app avisa que el contenedor `worker` puede estar detenido.
 
 ### Cupos de OpenRouter y privacidad
 

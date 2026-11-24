@@ -20,21 +20,59 @@ def _completion(content='{"ok": true}', model="m/uno:free"):
     return httpx.Response(200, json={"model": model, "choices": [{"message": {"content": content}}]})
 
 
+SATURATED = {"error": {"message": "m/uno:free is temporarily rate-limited upstream. Please retry shortly"}}
+
+
 @respx.mock
-def test_chat_sends_models_and_json_mode():
-    route = respx.post(f"{BASE}/chat/completions").mock(return_value=_completion(model="m/dos:free"))
+def test_chat_tries_models_in_order_when_saturated():
+    route = respx.post(f"{BASE}/chat/completions").mock(
+        side_effect=[httpx.Response(429, json=SATURATED), _completion(model="m/dos:free")]
+    )
     result = OpenRouterClient("sk-secreta").chat(
         MESSAGES, model="m/uno:free", fallback_models=["m/dos:free", "m/tres:free"], json_mode=True, max_tokens=500
     )
     assert result.content == '{"ok": true}' and result.model == "m/dos:free"
-    request = route.calls.last.request
-    body = json.loads(request.content)
-    assert body == {
-        "model": "m/uno:free", "models": ["m/uno:free", "m/dos:free", "m/tres:free"], "messages": MESSAGES,
+    bodies = [json.loads(c.request.content) for c in route.calls]
+    assert [b["model"] for b in bodies] == ["m/uno:free", "m/dos:free"]  # el tercero no hizo falta
+    assert bodies[1] == {
+        "model": "m/dos:free", "messages": MESSAGES,
         "response_format": {"type": "json_object"}, "max_tokens": 500, "temperature": 0.2,
     }
+    request = route.calls.last.request
     assert request.headers["Authorization"] == "Bearer sk-secreta"
     assert request.headers["X-Title"] == "Pulso Laboral"
+
+
+@respx.mock
+def test_chat_other_errors_also_move_to_next_model():
+    route = respx.post(f"{BASE}/chat/completions").mock(side_effect=[
+        httpx.Response(404, json={"error": {"message": "No endpoints found for m/uno:free"}}),
+        _completion(model="m/dos:free"),
+    ])
+    assert OpenRouterClient("k").chat(MESSAGES, model="m/uno:free", fallback_models=["m/dos:free"]).model == "m/dos:free"
+    assert route.call_count == 2
+
+
+@respx.mock
+def test_chat_daily_limit_stops_without_trying_other_models():
+    route = respx.post(f"{BASE}/chat/completions").mock(return_value=httpx.Response(
+        429, json={"error": {"message": "Rate limit exceeded: free-models-per-day"}}))
+    with pytest.raises(DailyLimitReached):
+        OpenRouterClient("k").chat(MESSAGES, model="a", fallback_models=["b", "c"])
+    assert route.call_count == 1
+
+
+@respx.mock
+def test_chat_all_saturated_raises_per_minute_with_shortest_wait():
+    route = respx.post(f"{BASE}/chat/completions").mock(side_effect=[
+        httpx.Response(429, json=SATURATED, headers={"Retry-After": "40"}),
+        httpx.Response(429, json=SATURATED, headers={"Retry-After": "15"}),
+        httpx.Response(500, json={"error": {"message": "boom"}}),
+    ])
+    with pytest.raises(PerMinuteRateLimit) as exc:
+        OpenRouterClient("k").chat(MESSAGES, model="a", fallback_models=["b", "c"])
+    assert exc.value.retry_after_s == 15 and "saturados (3 probados)" in str(exc.value)
+    assert route.call_count == 3
 
 
 @respx.mock

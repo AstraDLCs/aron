@@ -28,7 +28,10 @@ def test_upload_with_ai_available_is_queued(client, db, make_user, settings_over
     with settings_override(openrouter_api_key="test-key"):
         queue = client.get("/api/ai/queue", headers=h).json()
     assert queue["queued"] == 1 and queue["aiEnabled"] is True and queue["pausedUntil"] is None
-    assert queue["model"] and set(queue) == {"queued", "processing", "errors", "sinIa", "pausedUntil", "aiEnabled", "model"}
+    assert queue["model"] and set(queue) == {
+        "queued", "processing", "errors", "sinIa", "pausedUntil", "aiEnabled", "model",
+        "workerSeenAt", "workerStatus", "nextAttemptAt", "lastError",
+    }
 
 
 def test_worker_processes_and_audits(client, db, make_user, settings_override, rrhh_root):
@@ -269,3 +272,53 @@ def test_run_forever_survives_iteration_errors(monkeypatch):
     with pytest.raises(_StopLoop):
         worker.run_forever()
     assert next(outcomes, None) is None  # llegó hasta el final: la primera excepción no lo detuvo
+
+
+def _worker_row(db):
+    db.expire_all()
+    return db.get(AppSettings, 1)
+
+
+def test_worker_reports_what_it_is_doing(client, db, make_user, settings_override, rrhh_root):
+    assert worker.process_one(db, None, NOW) == "idle"
+    row = _worker_row(db)
+    assert row.worker_status == worker.STATUS_NO_KEY and row.worker_seen_at == NOW
+    assert worker.process_one(db, CLIENT, NOW) == "idle"
+    assert _worker_row(db).worker_status == worker.STATUS_EMPTY
+
+    cand, h, _ = make_queued_candidate(client, db, make_user, settings_override)
+    with respx.mock:
+        respx.post(BASE).mock(return_value=completion(ai_payload()))
+        assert worker.process_one(db, CLIENT, NOW) == "processed"
+    status = _worker_row(db).worker_status
+    assert status.startswith("Clasificó a ") and " con " in status
+    q = client.get("/api/state", headers=h).json()["aiQueue"]
+    assert q["workerStatus"] == status and q["workerSeenAt"]
+
+
+def test_saturated_models_leave_the_reason_visible(client, db, make_user, settings_override, rrhh_root):
+    cand, h, _ = make_queued_candidate(client, db, make_user, settings_override)
+    with respx.mock:
+        route = respx.post(BASE).mock(return_value=httpx.Response(
+            429, json={"error": {"message": "x is temporarily rate-limited upstream"}}, headers={"Retry-After": "30"}))
+        assert worker.process_one(db, CLIENT, NOW) == "paused"
+        assert route.call_count > 1  # probó los modelos de respaldo antes de esperar
+    db.refresh(cand)
+    assert cand.ai_status == "En cola" and cand.ai_attempts == 0  # esperar no gasta intentos
+    assert "saturados" in cand.ai_error
+    assert _worker_row(db).worker_status.startswith("Modelos saturados al clasificar a ")
+    assert worker.process_one(db, CLIENT, NOW) == "idle"  # todavía no le toca reintentar
+    assert _worker_row(db).worker_status == worker.STATUS_WAITING
+    q = client.get("/api/ai/queue", headers=h).json()
+    assert q["queued"] == 1 and "saturados" in q["lastError"] and q["workerStatus"] == worker.STATUS_WAITING
+
+
+def test_default_chain_is_appended_to_configured_models(db):
+    from app.config import DEFAULT_AI_MODEL
+    from app.services.app_settings import fallback_chain, get_app_settings
+
+    row = get_app_settings(db)
+    row.ai_model, row.ai_fallback_models = "google/gemma-4-31b-it:free", ["otro/modelo:free"]
+    chain = fallback_chain(row)
+    assert chain[0] == "otro/modelo:free" and DEFAULT_AI_MODEL in chain
+    assert "google/gemma-4-31b-it:free" not in chain and len(chain) <= 5

@@ -143,10 +143,22 @@ def _settings_block(row: AppSettings) -> dict:
 
 def _ai_queue(db: Session, row: AppSettings) -> dict:
     counts = _ai_status_counts(db)
+    queued = Candidate.ai_status == "En cola"
+    next_attempt_at = db.scalar(
+        select(func.min(Candidate.ai_next_attempt_at)).where(queued, Candidate.ai_next_attempt_at > func.now())
+    )
+    last_error = db.scalar(
+        select(Candidate.ai_error)
+        .where(Candidate.ai_status.in_(("En cola", "Error IA")), Candidate.ai_error.is_not(None), Candidate.ai_error != "")
+        .order_by(Candidate.ai_next_attempt_at.desc().nulls_last())
+        .limit(1)
+    )
     return _dump(AiQueueOut(
         queued=counts["En cola"], processing=counts["Procesando"], errors=counts["Error IA"],
         sin_ia=counts["Sin IA"], paused_until=row.ai_paused_until,
         ai_enabled=row.ai_enabled and bool(get_settings().openrouter_api_key), model=effective_ai_model(row),
+        worker_seen_at=row.worker_seen_at, worker_status=row.worker_status or "",
+        next_attempt_at=next_attempt_at, last_error=last_error,
     ))
 
 

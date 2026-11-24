@@ -186,3 +186,8 @@ class AiQueueOut(CamelModel):
     paused_until: datetime | None
     ai_enabled: bool
     model: str
+    # Qué está haciendo el worker y cuándo dio señales; próximo reintento y último motivo de espera o error.
+    worker_seen_at: datetime | None = None
+    worker_status: str = ""
+    next_attempt_at: datetime | None = None
+    last_error: str | None = None

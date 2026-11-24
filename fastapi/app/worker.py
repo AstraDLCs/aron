@@ -10,13 +10,14 @@ import time
 from datetime import UTC, datetime, timedelta
 from typing import Literal
 
-from sqlalchemy import or_, select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.orm import Session
 
 from app.audit import log_action
 from app.config import get_settings
 from app.constants import AI_ACTOR
-from app.models.people import Candidate
+from app.models.org import Position
+from app.models.people import Candidate, Person
 from app.services.app_settings import get_app_settings
 from app.services.classifier import ClassificationFormatError, classify_candidate
 from app.services.openrouter import (
@@ -92,17 +93,43 @@ def _record_failure(db: Session, candidate: Candidate, exc: Exception, now: date
         candidate.ai_next_attempt_at = now + timedelta(seconds=RETRY_BASE_S * 2**candidate.ai_attempts)
 
 
+STATUS_NO_KEY = "Sin clave de OpenRouter (OPENROUTER_API_KEY): no se puede clasificar"
+STATUS_DISABLED = "IA desactivada en Configuración"
+STATUS_DAILY = "En pausa por el límite diario de OpenRouter"
+STATUS_EMPTY = "Cola vacía: no hay CV por clasificar"
+STATUS_WAITING = "Esperando para reintentar: los modelos de IA estaban saturados o fallaron"
+
+
+def _beat(db: Session, status: str, now: datetime) -> None:
+    """Deja en la configuración qué está haciendo el worker y cuándo dio señales (lo muestra la app)."""
+    row = get_app_settings(db)
+    row.worker_seen_at = now
+    row.worker_status = status[:300]
+
+
+def _who(db: Session, candidate: Candidate) -> str:
+    person = db.get(Person, candidate.person_id)
+    position = db.get(Position, candidate.position_id)
+    name = (person.full_name if person else "") or "postulación sin nombre"
+    return f"{name} ({position.name})" if position else name
+
+
 def process_one(db: Session, client: OpenRouterClient | None, now: datetime) -> Outcome:
     """Clasifica la siguiente postulación en cola.
 
     'idle': no hay nada que hacer (sin cliente, IA apagada o cola vacía). 'paused': pausa por el límite diario
     (o límite por minuto: la postulación se reintenta más tarde). 'processed': clasificada. 'error': falló.
+    En cada caso deja su estado con `_beat` para que la app muestre qué pasa.
     """
     settings = get_app_settings(db)
     if client is None or not settings.ai_enabled:
+        _beat(db, STATUS_NO_KEY if client is None else STATUS_DISABLED, now)
+        db.commit()
         return "idle"
     if settings.ai_paused_until is not None:
         if settings.ai_paused_until > now:
+            _beat(db, STATUS_DAILY, now)
+            db.commit()
             return "paused"
         settings.ai_paused_until = None  # ya pasó el reinicio diario
         db.commit()
@@ -115,13 +142,19 @@ def process_one(db: Session, client: OpenRouterClient | None, now: datetime) -> 
         .limit(1)
     )
     if candidate is None:
+        waiting = db.scalar(select(func.count()).select_from(Candidate).where(Candidate.ai_status == "En cola"))
+        _beat(db, STATUS_WAITING if waiting else STATUS_EMPTY, now)
+        db.commit()
         return "idle"
     candidate_id = candidate.id
+    who = _who(db, candidate)
     candidate.ai_status = "Procesando"
+    _beat(db, f"Clasificando a {who}", now)
     db.commit()  # suelta el bloqueo: durante la llamada al modelo no se mantiene abierta la fila
 
     try:
         classify_candidate(db, candidate, client)
+        _beat(db, f"Clasificó a {who} con {candidate.ai_model or 'IA'}", datetime.now(UTC))
         db.commit()
         return "processed"
     except Exception as exc:  # noqa: BLE001 - cualquier fallo se anota en la postulación
@@ -129,15 +162,19 @@ def process_one(db: Session, client: OpenRouterClient | None, now: datetime) -> 
         candidate = db.get(Candidate, candidate_id)
         if isinstance(exc, DailyLimitReached):
             _pause_daily(db, candidate, exc.reset_at, now)
+            _beat(db, STATUS_DAILY, now)
             outcome: Outcome = "paused"
         elif isinstance(exc, PerMinuteRateLimit):
             candidate.ai_status = "En cola"
             candidate.ai_next_attempt_at = now + timedelta(seconds=exc.retry_after_s)
+            candidate.ai_error = str(exc)[:ERROR_MESSAGE_MAX]  # el motivo queda visible en la app
+            _beat(db, f"Modelos saturados al clasificar a {who}; se reintenta automáticamente", now)
             outcome = "paused"
         else:
             if not isinstance(exc, (OpenRouterError, ClassificationFormatError)):
                 logger.exception("Error inesperado al clasificar la postulación %s", candidate_id)
             _record_failure(db, candidate, exc, now)
+            _beat(db, f"Falló la clasificación de {who}: {_failure_text(exc)}", now)
             outcome = "error"
         db.commit()
         logger.warning("Postulación %s: %s", candidate_id, _failure_text(exc))

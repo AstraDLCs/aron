@@ -20,3 +20,6 @@ class AppSettings(Base):
     ai_preapprove_threshold: Mapped[int] = mapped_column(Integer, default=70, server_default="70")
     ai_enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
     ai_paused_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Lo escribe el worker en cada vuelta: la app muestra qué está haciendo y si sigue vivo.
+    worker_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    worker_status: Mapped[str] = mapped_column(String(300), default="", server_default="")

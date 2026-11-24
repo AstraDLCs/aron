@@ -19,6 +19,7 @@ import { AuditLogModule } from './components/AuditLogModule';
 import { SettingsModule } from './components/SettingsModule';
 import { WipeDialog } from './components/WipeDialog';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
+import { aiQueueDetail, aiQueueHeadline, type QueueTone } from './utils/aiQueue';
 import { startupSync } from './sync/autoSync';
 import { formatTime } from './utils/labels';
 import type { AppSection, AppState, ModuleProps } from './types';
@@ -29,6 +30,15 @@ const ProcessesKPIModule = (Processes as any).ProcessesKPIModule as React.Compon
 const ReportsExportModule = (Reports as any).ReportsExportModule as React.ComponentType<any>;
 
 const POLL_MS = 30_000;
+const BUSY_POLL_MS = 10_000;
+
+const QUEUE_TONE: Record<QueueTone, string> = {
+  neutral: 'border-[#D4D7DD] bg-white text-[#5C626D] hover:bg-[#EFEFF1]',
+  green: 'border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100',
+  orange: 'border-[#E6CDBE] bg-[#FBF4EE] text-[#8C4722] hover:bg-[#F6E9DE]',
+  amber: 'border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100',
+  red: 'border-red-200 bg-red-50 text-red-800 hover:bg-red-100',
+};
 
 const SECTION_NAMES: Partial<Record<AppSection, string>> = {
   candidatos: 'Candidatos',
@@ -86,7 +96,14 @@ function Shell() {
     }
   }, [largeText]);
 
+  const lastRefreshRef = useRef(0);
+  const busyQueueRef = useRef(false);
+  useEffect(() => {
+    busyQueueRef.current = !!state && state.aiQueue.queued + state.aiQueue.processing > 0;
+  }, [state]);
+
   const refresh = useCallback(async () => {
+    lastRefreshRef.current = Date.now();
     try {
       const s = await apiFetch<AppState>('/api/state');
       setState(s);
@@ -105,9 +122,12 @@ function Shell() {
 
   useEffect(() => {
     void refresh();
+    // Cada 30 s; con CVs en la cola de la IA, cada 10 s para ver el avance casi en vivo.
     const t = setInterval(() => {
-      if (!document.hidden) void refresh();
-    }, POLL_MS);
+      if (document.hidden) return;
+      const age = Date.now() - lastRefreshRef.current;
+      if (age >= POLL_MS || (busyQueueRef.current && age >= BUSY_POLL_MS)) void refresh();
+    }, 2_000);
     return () => clearInterval(t);
   }, [refresh]);
 
@@ -161,6 +181,7 @@ function Shell() {
 
   const props: ModuleProps = { state, onState, refresh, navigate };
   const q = state.aiQueue;
+  const headline = aiQueueHeadline(q);
 
   return (
     <div className="min-h-screen bg-[#F7F7F8] pb-10 text-[#23272E]">
@@ -180,22 +201,15 @@ function Shell() {
             </span>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <span
-              title={`Modelo: ${q.model || '—'}`}
-              className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold ${
-                !q.aiEnabled
-                  ? 'border-[#D4D7DD] bg-white text-[#5C626D]'
-                  : q.pausedUntil
-                    ? 'border-amber-200 bg-amber-50 text-amber-800'
-                    : 'border-[#E6CDBE] bg-[#FBF4EE] text-[#8C4722]'
-              }`}
+            <button
+              type="button"
+              onClick={() => navigate('configuracion')}
+              title={`${aiQueueDetail(q)}\n\nClic: ver la cola de la IA`}
+              className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold ${QUEUE_TONE[headline.tone]}`}
             >
-              <Bot className="h-3.5 w-3.5" />
-              {!q.aiEnabled
-                ? 'IA desactivada'
-                : `IA: ${q.queued} en cola${q.processing ? ` · ${q.processing} procesando` : ''}${q.errors ? ` · ${q.errors} con error` : ''}`}
-              {q.pausedUntil && ` · pausada hasta ${formatTime(q.pausedUntil)}`}
-            </span>
+              {q.processing > 0 ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Bot className="h-3.5 w-3.5" />}
+              {headline.text}
+            </button>
             <ServerStatusIndicator online={online} url={apiUrl} />
             <button
               type="button"
