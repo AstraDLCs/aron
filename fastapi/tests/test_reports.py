@@ -58,3 +58,15 @@ def test_report_downloads_are_logged(client, db, make_user, rrhh_root):
     logs = list(db.scalars(select(AuditLog).where(AuditLog.action == "report.download").order_by(AuditLog.id)))
     assert [r.details["report"] for r in logs] == ["admin-doc", "candidate-doc", "candidates-csv", "kpis-csv"]
     assert client.get("/api/reports/admin-doc").status_code == 401
+
+
+def test_csv_cells_neutralize_formulas():
+    from app.services.reports import build_audit_csv, build_candidates_csv
+
+    c = {"fullName": "=HYPERLINK(\"http://x\")", "career": "+cmd", "university": "@x", "age": None}
+    text = build_candidates_csv([c])
+    assert "\"'=HYPERLINK(\"\"http://x\"\")\"" in text
+    assert "\"'+cmd\"" in text and "\"'@x\"" in text
+    assert '"-"' in text  # el marcador de vacío no se altera
+    assert "\"'-\"" not in text
+    assert "\"'=1+1\"" in build_audit_csv([{"summary": "=1+1"}])

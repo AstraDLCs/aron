@@ -21,6 +21,8 @@ def _now_str() -> str:
 
 def _cell(value) -> str:
     text = "-" if value is None else str(value)
+    if isinstance(value, str) and text[:1] in ("=", "+", "-", "@", "\t", "\r"):
+        text = "'" + text  # evita que Excel lo interprete como fórmula
     return '"' + text.replace('"', '""') + '"'
 
 
@@ -62,7 +64,7 @@ def build_candidates_csv(candidates: list[dict]) -> str:
             c.get("fullName"), c.get("age"), c.get("originLocation"), c.get("university"), c.get("career"),
             c.get("yearsWorked"), "; ".join(c.get("specifications") or []), c.get("sourceBoardName"),
             c.get("targetRoleTitle"), psych.get("status"),
-            *([s.get(k) for k in _PSYCH_KEYS] if s else ["-"] * 5),
+            *([s.get(k) for k in _PSYCH_KEYS] if s else [None] * 5),
             psych.get("averageScore"), psych.get("aptitudeLevel"), m.get("technicalSpecsScore"),
             m.get("experienceScore"), m.get("educationCareerScore"), m.get("overallScore"), c.get("aiStatus"),
             c.get("aiVerdict"), c.get("aiAptitudeScore"), c.get("decision"), c.get("evaluatedBy"),
