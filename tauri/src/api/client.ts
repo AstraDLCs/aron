@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { save, open } from '@tauri-apps/plugin-dialog';
-import { loadConfig, isTauri } from './config';
+import { API_URL_EDITABLE, loadConfig, isTauri } from './config';
 import { getToken, fireUnauthorized } from './session';
 
 export { onUnauthorized } from './session';
@@ -71,7 +71,10 @@ async function rawFetch(path: string, opts: ApiOpts = {}): Promise<Response> {
     if ((e as any)?.name === 'AbortError') throw e;
     throw new ApiError(
       0,
-      `No se pudo conectar con el servidor (${cfg.apiBaseUrl}). Revisa la URL en "Servidor" y que la API esté encendida.`,
+      `No se pudo conectar con el servidor (${cfg.apiBaseUrl}). ` +
+        (API_URL_EDITABLE
+          ? 'Revisa la URL en "Servidor" y que la API esté encendida.'
+          : 'Revisa tu conexión a internet e inténtalo de nuevo.'),
       'network',
     );
   }

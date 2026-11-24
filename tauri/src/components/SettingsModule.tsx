@@ -18,7 +18,7 @@ import {
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import type { AppState, AppSection } from '../types';
 import { apiFetch, errorMessage } from '../api/client';
-import { loadConfig, normalizeBaseUrl, saveConfig, type AppConfig } from '../api/config';
+import { API_URL_EDITABLE, loadConfig, normalizeBaseUrl, saveConfig, type AppConfig } from '../api/config';
 import { runSync, anyErrorMessage, type SyncSummary } from '../sync/runSync';
 import { saveLastSummary } from '../sync/autoSync';
 import { Badge, Button, Card, Field, Notice, Spinner, Toggle, formatDateTime, inputClass } from './cv/ui';
@@ -369,21 +369,35 @@ export function SettingsModule({ state, onState, refresh }: SettingsModuleProps)
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
         <div className="space-y-5">
           <SettingsCard icon={<Server className="h-4 w-4" />} title="Servidor" subtitle="Dirección de la API de Pulso Laboral.">
-            <Field label="URL del servidor" hint="Ejemplo: https://aron.astra-industria.dev, o http://localhost:8000 para una API local">
-              <input className={`${inputClass} font-mono-tabular`} value={url} onChange={(e) => setUrl(e.target.value)} />
+            <Field
+              label="URL del servidor"
+              hint={
+                API_URL_EDITABLE
+                  ? 'Modo desarrollo: por ejemplo http://localhost:8000 para la API local.'
+                  : 'Esta versión se conecta siempre al servidor oficial de Pulso Laboral.'
+              }
+            >
+              <input
+                className={`${inputClass} font-mono-tabular`}
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                readOnly={!API_URL_EDITABLE}
+              />
             </Field>
             <div className="mt-3 flex flex-wrap gap-2">
               <Button icon={<PlugZap className="h-4 w-4" />} onClick={testConnection} loading={testing}>
                 Probar conexión
               </Button>
-              <Button
-                variant="primary"
-                icon={<Save className="h-4 w-4" />}
-                onClick={saveServer}
-                disabled={!config || normalizeBaseUrl(url) === config.apiBaseUrl}
-              >
-                Guardar
-              </Button>
+              {API_URL_EDITABLE && (
+                <Button
+                  variant="primary"
+                  icon={<Save className="h-4 w-4" />}
+                  onClick={saveServer}
+                  disabled={!config || normalizeBaseUrl(url) === config.apiBaseUrl}
+                >
+                  Guardar
+                </Button>
+              )}
             </div>
             {serverMsg && (
               <div className="mt-3">

@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { AlertCircle, Loader2, Server } from 'lucide-react';
 import { errorMessage } from '../api/client';
-import { loadConfig } from '../api/config';
+import { API_URL_EDITABLE, loadConfig } from '../api/config';
 import { useAuth } from './AuthProvider';
 import { ServerDialog } from './ServerDialog';
 
@@ -29,15 +29,24 @@ export function AuthShell({ title, subtitle, children }: { title: string; subtit
         <p className="mb-5 text-sm text-[#5C626D]">{subtitle}</p>
         {children}
       </div>
-      <button
-        type="button"
-        onClick={() => setServerOpen(true)}
-        className="mt-5 inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-[#5C626D] hover:bg-[#EFEFF1] hover:text-[#23272E]"
-      >
-        <Server className="h-3.5 w-3.5" />
-        Servidor: <span className="font-mono">{apiUrl}</span>
-      </button>
-      <ServerDialog open={serverOpen} onClose={() => setServerOpen(false)} />
+      {API_URL_EDITABLE ? (
+        <>
+          <button
+            type="button"
+            onClick={() => setServerOpen(true)}
+            className="mt-5 inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-[#5C626D] hover:bg-[#EFEFF1] hover:text-[#23272E]"
+          >
+            <Server className="h-3.5 w-3.5" />
+            Servidor: <span className="font-mono">{apiUrl}</span>
+          </button>
+          <ServerDialog open={serverOpen} onClose={() => setServerOpen(false)} />
+        </>
+      ) : (
+        <p className="mt-5 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-[#5C626D]">
+          <Server className="h-3.5 w-3.5" />
+          Servidor: <span className="font-mono">{apiUrl}</span>
+        </p>
+      )}
     </div>
   );
 }

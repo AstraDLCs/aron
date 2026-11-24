@@ -139,8 +139,8 @@ npm install
 npm run tauri dev
 ```
 
-Por defecto la app apunta al servidor oficial, `https://aron.astra-industria.dev`. Para trabajar contra la API
-local, cambia el servidor a `http://localhost:8000` en el diálogo «Servidor» de la pantalla de inicio de sesión.
+En desarrollo (`npm run tauri dev`) la app usa la API local, `http://localhost:8000`, y el servidor se puede
+cambiar en el diálogo «Servidor». El instalador (`.msi`) se conecta siempre al servidor oficial (ver más abajo).
 
 ### Generar el instalador (.msi)
 
@@ -189,10 +189,14 @@ escribir `BORRAR` para confirmar.
 
 ### Servidor de la API
 
-- El endpoint oficial está en `DEFAULT_API_BASE_URL`, en `rebuild/tauri/src/api/config.ts`
+- El endpoint oficial está en `OFFICIAL_API_BASE_URL`, en `rebuild/tauri/src/api/config.ts`
   (`https://aron.astra-industria.dev`). Si cambia, hay que volver a generar el instalador.
-- Cada usuario también puede cambiarlo sin recompilar: Configuración → Servidor, o el diálogo «Servidor» de la
-  pantalla de inicio de sesión. Los servidores remotos deben usar `https` (`http` solo se admite para localhost).
+- El instalador usa siempre ese servidor. Ignora cualquier URL guardada de pruebas anteriores, y en la app el
+  servidor se muestra pero no se puede editar.
+- Solo `npm run tauri dev` permite cambiar el servidor: Configuración → Servidor, o el diálogo «Servidor» de la
+  pantalla de inicio de sesión.
+- La API acepta siempre los orígenes de la app de escritorio (`http://tauri.localhost`, `https://tauri.localhost`
+  y `tauri://localhost`). `CORS_ORIGINS` solo agrega orígenes extra y no hace falta definirla.
 
 ### Carga de CV
 

@@ -13,6 +13,11 @@ DEFAULT_AI_MODEL = "google/gemma-4-31b-it:free"
 DEFAULT_AI_FALLBACK_MODELS = ["google/gemma-4-26b-a4b-it:free", "inclusionai/ling-3.2-flash:free"]
 
 
+# Orígenes de la app de escritorio Tauri (Windows usa http://tauri.localhost). Se permiten SIEMPRE, sin
+# importar CORS_ORIGINS: es el cliente para el que existe la API. CORS_ORIGINS solo agrega orígenes extra.
+DESKTOP_APP_ORIGINS = ["http://tauri.localhost", "https://tauri.localhost", "tauri://localhost"]
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(extra="ignore")
 

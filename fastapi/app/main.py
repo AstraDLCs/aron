@@ -2,7 +2,7 @@ from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from app.config import get_settings
+from app.config import DESKTOP_APP_ORIGINS, get_settings
 from app.routers import (
     audit,
     reports,
@@ -31,7 +31,7 @@ def create_app() -> FastAPI:
     app = FastAPI(title="Pulso Laboral API")
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=settings.cors_origins,
+        allow_origins=list(dict.fromkeys([*DESKTOP_APP_ORIGINS, *settings.cors_origins])),
         allow_methods=["*"],
         allow_headers=["*"],
         expose_headers=["Content-Disposition"],

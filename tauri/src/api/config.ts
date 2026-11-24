@@ -1,7 +1,10 @@
 import { load, type Store } from '@tauri-apps/plugin-store';
 
-/** URL de la API por defecto. ÚNICO lugar donde se define el endpoint oficial. */
-export const DEFAULT_API_BASE_URL = 'https://aron.astra-industria.dev';
+/** API oficial. ÚNICO lugar donde se define. El instalador (.msi) se conecta siempre a esta. */
+export const OFFICIAL_API_BASE_URL = 'https://aron.astra-industria.dev';
+/** Solo en desarrollo (`npm run tauri dev`) se usa la API local y se puede cambiar desde «Servidor». */
+export const API_URL_EDITABLE = import.meta.env.DEV;
+export const DEFAULT_API_BASE_URL = API_URL_EDITABLE ? 'http://localhost:8000' : OFFICIAL_API_BASE_URL;
 
 export type AppConfig = { apiBaseUrl: string; cvFolder: string | null; syncOnOpen: boolean };
 
@@ -60,7 +63,8 @@ export async function loadConfig(): Promise<AppConfig> {
     raw = {};
   }
   cached = {
-    apiBaseUrl: normalizeBaseUrl(raw.apiBaseUrl || DEFAULTS.apiBaseUrl),
+    // En el instalador se ignora cualquier URL guardada antes (p. ej. un localhost de pruebas).
+    apiBaseUrl: API_URL_EDITABLE ? normalizeBaseUrl(raw.apiBaseUrl || DEFAULTS.apiBaseUrl) : OFFICIAL_API_BASE_URL,
     cvFolder: raw.cvFolder ?? null,
     syncOnOpen: raw.syncOnOpen ?? DEFAULTS.syncOnOpen,
   };
@@ -70,7 +74,7 @@ export async function loadConfig(): Promise<AppConfig> {
 export async function saveConfig(patch: Partial<AppConfig>): Promise<AppConfig> {
   const current = await loadConfig();
   const next: AppConfig = { ...current, ...patch };
-  next.apiBaseUrl = normalizeBaseUrl(next.apiBaseUrl);
+  next.apiBaseUrl = API_URL_EDITABLE ? normalizeBaseUrl(next.apiBaseUrl) : OFFICIAL_API_BASE_URL;
   const invalid = validateApiUrl(next.apiBaseUrl);
   if (invalid) throw new Error(invalid);
   const serverChanged = next.apiBaseUrl !== current.apiBaseUrl;
@@ -78,7 +82,9 @@ export async function saveConfig(patch: Partial<AppConfig>): Promise<AppConfig> 
   try {
     if (isTauri()) {
       const s = await getStore('config.json');
-      await s.set('apiBaseUrl', next.apiBaseUrl);
+      // Solo se guarda la URL en desarrollo; en el instalador se borra la que hubiera quedado.
+      if (API_URL_EDITABLE) await s.set('apiBaseUrl', next.apiBaseUrl);
+      else await s.delete('apiBaseUrl');
       await s.set('cvFolder', next.cvFolder);
       await s.set('syncOnOpen', next.syncOnOpen);
       await s.save();
