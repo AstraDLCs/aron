@@ -21,6 +21,7 @@ from app.schemas.org import AiQueueOut, JobBoardOut, JobNeedOut, PositionOut, Se
 from app.services.ai_chat import conversations_payload
 from app.services.app_settings import effective_ai_model, effective_fallback_models, get_app_settings
 from app.services.scoring import compute_kpis
+from app.services.tests_module import catalog_payload
 from app.services.snapshot_candidates import blocked_payload, candidates_payload
 
 CATALOG_VERSION = 4
@@ -179,7 +180,7 @@ def build_state(db: Session, user: User) -> dict:
         "candidates": candidates,
         "blockedCvFiles": blocked_payload(db),
         "recruitmentCriteria": criteria_payload(db),
-        "testCatalog": [],
+        "testCatalog": catalog_payload(db),
         "aiConversations": conversations_payload(db),
         "kpis": compute_kpis(job_needs, job_boards, candidates),
     }

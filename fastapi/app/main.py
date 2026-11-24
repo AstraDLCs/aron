@@ -7,6 +7,7 @@ from app.routers import (
     reports,
     ai_chat,
     ai_queue,
+    tests_module,
     auth,
     candidates,
     criteria,
@@ -38,7 +39,7 @@ def create_app() -> FastAPI:
     api.include_router(auth.router)
     api.include_router(users.router)
     for module in (audit, reports, datacenter, state, positions, sources, requirements, settings_router, cv_files, persons, candidates, criteria,
-                   ai_queue, ai_chat):
+                   ai_queue, ai_chat, tests_module):
         api.include_router(module.router)
     app.include_router(api)
     return app

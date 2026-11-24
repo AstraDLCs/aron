@@ -252,3 +252,78 @@ def evaluate_excel_test_rows(rows: list[dict], passing_score: int | None = None)
         'passed': passed,
         'aiAnalysis': _ai_analysis(verdict, answered, total, auto_score, passing_score, passed),
     }
+
+
+# --- lectura y plantilla (Tarea 10) -------------------------------------------
+
+TEMPLATE_COLUMNS = ['Prueba Evaluada', 'Candidato', 'Pregunta', 'Respuesta', 'Escala Máxima']
+DEFAULT_TEMPLATE_QUESTIONS = [
+    'Estabilidad operativa bajo presión en faena',
+    'Cumplimiento estricto de normas HSEC y PETAR',
+    'Dominio técnico del puesto minero',
+    'Coordinación efectiva en guardia 14x7',
+]
+DEFAULT_TEMPLATE_NAME = 'Prueba Base'
+MAX_EXCEL_ROWS = 2000
+
+
+class ExcelReadError(ValueError):
+    pass
+
+
+def _clean_cell(v):
+    return v.strip() if isinstance(v, str) else v
+
+
+def read_excel_rows(data: bytes, filename: str) -> tuple[list[dict], str]:
+    """Primera hoja de un .xlsx (o un CSV) como filas {encabezado: valor}; devuelve (filas, nombre de la hoja)."""
+    import csv
+    import io
+
+    name = (filename or '').lower()
+    try:
+        if name.endswith('.csv'):
+            text = data.decode('utf-8-sig', errors='replace')
+            rows = [dict(r) for r in csv.DictReader(io.StringIO(text))]
+            return [r for r in rows if any(v not in (None, '') for v in r.values())][:MAX_EXCEL_ROWS], ''
+        from openpyxl import load_workbook
+
+        wb = load_workbook(io.BytesIO(data), read_only=True, data_only=True)
+        ws = wb.worksheets[0]
+        header = None
+        rows: list[dict] = []
+        for raw in ws.iter_rows(values_only=True):
+            if all(c in (None, '') for c in raw):
+                continue
+            if header is None:
+                header = [str(c).strip() if c is not None else '' for c in raw]
+                continue
+            rows.append({h: _clean_cell(c) for h, c in zip(header, raw) if h})
+            if len(rows) >= MAX_EXCEL_ROWS:
+                break
+        title = ws.title
+        wb.close()
+        return rows, title
+    except Exception:  # noqa: BLE001 - archivo dañado o de otro formato
+        raise ExcelReadError('No se pudo leer el archivo: usa un .xlsx o .csv válido') from None
+
+
+def build_excel_template(test: dict | None, candidate_name: str | None) -> bytes:
+    """Plantilla .xlsx con una hoja `Prueba`: una fila por pregunta, respuesta vacía y escala máxima 5."""
+    import io
+
+    from openpyxl import Workbook
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'Prueba'
+    ws.append(TEMPLATE_COLUMNS)
+    name = (test or {}).get('name') or DEFAULT_TEMPLATE_NAME
+    questions = list((test or {}).get('questions') or []) or DEFAULT_TEMPLATE_QUESTIONS
+    for q in questions:
+        ws.append([name, candidate_name or '', q, None, 5])
+    for col, width in zip('ABCDE', (32, 26, 56, 14, 16)):
+        ws.column_dimensions[col].width = width
+    out = io.BytesIO()
+    wb.save(out)
+    return out.getvalue()

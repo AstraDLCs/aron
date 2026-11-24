@@ -14,6 +14,7 @@ from app.models.people import Candidate, CvFile, DeletedCvHash, Person
 from app.schemas.people import BlockedCvFileOut, CandidateOut, MetricReportOut, OtherApplicationOut
 from app.services.candidate_rules import person_psych_score
 from app.services.scoring import PSYCH_BASELINE, fit_verdict, global_index
+from app.services.tests_module import results_by_person
 
 
 def _dump(model) -> dict:
@@ -95,6 +96,7 @@ def candidates_payload(db: Session, now: datetime | None = None) -> list[dict]:
     for c in candidates:
         by_person[c.person_id].append(c)
 
+    excel_results = results_by_person(db)
     out = []
     for c in candidates:
         others = [
@@ -102,9 +104,11 @@ def candidates_payload(db: Session, now: datetime | None = None) -> list[dict]:
             for o in by_person[c.person_id] if o.id != c.id
         ]
         cv = cvs.get(c.cv_file_id) if c.cv_file_id else None
-        out.append(_dump(_candidate_out(
+        item = _dump(_candidate_out(
             c, persons[c.person_id], cv, positions[c.position_id], sources.get(c.source_id, ""), others, now,
-        )))
+        ))
+        item["excelTestResults"] = excel_results.get(c.person_id, [])
+        out.append(item)
     return out
 
 
