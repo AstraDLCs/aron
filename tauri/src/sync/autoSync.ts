@@ -1,7 +1,9 @@
 import type { AppState } from '../types';
 import { apiFetch } from '../api/client';
 import { loadConfig } from '../api/config';
-import { runSync, type SyncSummary } from './runSync';
+import { runSync, summaryLine, type SyncSummary } from './runSync';
+import { toast } from '../components/common/Toast';
+import { showSyncSummary } from './showSummary';
 
 const LAST_SYNC_KEY = 'pulso.lastSyncSummary';
 export const SYNC_EVENT = 'pulso:sync-summary';
@@ -36,8 +38,23 @@ export async function startupSync(state: AppState, onState: (s: AppState) => voi
     });
     saveLastSummary(summary);
     window.dispatchEvent(new CustomEvent(SYNC_EVENT, { detail: summary }));
-    const fresh = await apiFetch<AppState>('/api/state');
-    onState(fresh);
+    if (summary.scanned > 0 || summary.errors.length > 0) {
+      try {
+        toast(
+          summary.errors.length && summary.scanned === 0
+            ? `Sincronización de la carpeta local: ${summary.errors[0].message}`
+            : `Sincronización: ${summaryLine(summary)}.`,
+          summary.errors.length ? 'error' : 'ok',
+          { label: 'Ver detalle', run: () => showSyncSummary(summary) },
+        );
+      } catch {
+        /* sin avisos */
+      }
+    }
+    if (summary.uploaded > 0) {
+      const fresh = await apiFetch<AppState>('/api/state');
+      onState(fresh);
+    }
   } catch {
     /* silencioso: la app sigue funcionando */
   }

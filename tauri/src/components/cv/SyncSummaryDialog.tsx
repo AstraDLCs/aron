@@ -3,6 +3,12 @@ import { AlertTriangle, Ban, CheckCircle2, Copy, FolderX, XCircle } from 'lucide
 import type { SyncSummary } from '../../sync/runSync';
 import { Button, Modal, Notice, formatDateTime } from './ui';
 
+const SKIP_REASON: Record<string, string> = {
+  estructura: 'no está dentro de una carpeta puesto/fuente/',
+  formato: 'formato no admitido (solo PDF, DOCX, TXT o RTF) o no se pudo leer',
+  tamaño: 'archivo vacío o mayor a 15 MB',
+};
+
 function Section({
   icon,
   title,
@@ -141,7 +147,7 @@ export function SyncSummaryDialog({ summary, onClose }: { summary: SyncSummary; 
           <ul className="space-y-1">
             {summary.skipped.map((s) => (
               <li key={s.path} className="truncate" title={s.path}>
-                {s.path} — <span className="text-[#5C626D]">{s.reason}</span>
+                {s.path} — <span className="text-[#5C626D]">{SKIP_REASON[s.reason] ?? s.reason}</span>
               </li>
             ))}
           </ul>

@@ -206,6 +206,13 @@ export function CvFolderModule({ state, onState, refresh, navigate }: CvFolderMo
       }
       const folders: [string, string][] = [];
       for (const p of targets) for (const s of activeSources) folders.push([p.folderName, s.folderName]);
+      // Si la carpeta ya tiene una subcarpeta "rrhh", la sincronización lee desde ahí: se crea dentro de ella.
+      try {
+        const scan = await invoke<{ rootUsed: string }>('scan_cv_folder', { root });
+        if (scan?.rootUsed) root = scan.rootUsed;
+      } catch {
+        /* la carpeta aún no existe: se crea */
+      }
       const created = await invoke<number>('create_folder_structure', { root, folders });
       setNotice({
         kind: 'success',
