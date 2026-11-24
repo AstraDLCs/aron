@@ -1,16 +1,23 @@
+import os
 from contextlib import contextmanager
 from pathlib import Path
 
-import pytest
-from alembic import command
-from alembic.config import Config
-from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, text
-from sqlalchemy.orm import Session
+# Debe definirse antes de importar la app: JWT_SECRET es obligatorio.
+os.environ.setdefault("JWT_SECRET", "secreto-solo-para-pruebas-" + "x" * 32)
 
-from app.config import get_settings
-from app.db import get_db
-from app.main import app
+import pytest  # noqa: E402
+from alembic import command  # noqa: E402
+from alembic.config import Config  # noqa: E402
+from fastapi.testclient import TestClient  # noqa: E402
+from sqlalchemy import create_engine, text  # noqa: E402
+from sqlalchemy.engine import make_url  # noqa: E402
+from sqlalchemy.orm import Session  # noqa: E402
+
+from app.config import get_settings  # noqa: E402
+from app.db import get_db  # noqa: E402
+from app.main import app  # noqa: E402
+from app.models.user import User  # noqa: E402
+from app.security import create_access_token, hash_password  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -31,9 +38,18 @@ def _override_settings(**kw):
 
 @pytest.fixture(scope="session")
 def test_engine():
-    url = get_settings().test_database_url
+    settings = get_settings()
+    url = settings.test_database_url
     if not url:
         pytest.exit("TEST_DATABASE_URL no está definida (ejecutar con docker compose run --rm api pytest)", 2)
+    test_name = make_url(url).database or ""
+    prod_name = make_url(settings.database_url).database or ""
+    if not test_name.endswith("_test") or test_name == prod_name:
+        pytest.exit(
+            f"TEST_DATABASE_URL apunta a '{test_name}': debe terminar en '_test' y ser distinta de "
+            f"DATABASE_URL ('{prod_name}'). Se aborta para no borrar datos reales.",
+            2,
+        )
     engine = create_engine(url)
     with engine.begin() as conn:
         conn.execute(text("DROP SCHEMA public CASCADE"))
@@ -50,7 +66,7 @@ def test_engine():
 def db(test_engine):
     conn = test_engine.connect()
     outer = conn.begin()
-    session = Session(bind=conn, join_transaction_mode="create_savepoint")
+    session = Session(bind=conn, join_transaction_mode="create_savepoint", expire_on_commit=False)
 
     def _get_db():
         yield session
@@ -85,3 +101,19 @@ def _no_openrouter_key():
 def rrhh_root(tmp_path):
     with _override_settings(rrhh_root=tmp_path):
         yield tmp_path
+
+
+@pytest.fixture
+def make_user(db):
+    def _make(email="ana@mina.pe", full_name="Ana Torres", job_title="Jefe de RR.HH.", password="clave-segura-1"):
+        user = User(
+            full_name=full_name,
+            email=email.lower(),
+            password_hash=hash_password(password),
+            job_title=job_title,
+        )
+        db.add(user)
+        db.flush()
+        return user, {"Authorization": f"Bearer {create_access_token(user.id)}"}
+
+    return _make
