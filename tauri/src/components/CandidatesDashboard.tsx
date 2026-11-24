@@ -20,6 +20,7 @@ import { apiFetch, errorMessage, openRemoteFile } from '../api/client';
 import { DownloadButton } from './common/DownloadButton';
 import { toast } from './common/Toast';
 import { UploadCvDialog } from './cv/UploadCvDialog';
+import { useCreatable } from './common/creatable';
 import { HorizontalDistributionBars } from './ExecutiveCharts';
 import {
   aiStatusTone,
@@ -104,6 +105,16 @@ function ManualCandidateForm({ state, onState, onClose }: { state: AppState; onS
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setF({ ...f, [k]: e.target.value });
+  const created = (setId: (id: string) => void) => (id: string, s: AppState | null) => {
+    if (s) onState(s);
+    setId(id);
+  };
+  const posSel = useCreatable({ kind: 'puesto', state, value: positionId, onSelect: setPositionId, onCreated: created(setPositionId) });
+  const reqSel = useCreatable({
+    kind: 'requerimiento', state, value: requirementId, onSelect: setRequirementId,
+    onCreated: created(setRequirementId), positionId,
+  });
+  const srcSel = useCreatable({ kind: 'fuente', state, value: sourceId, onSelect: setSourceId, onCreated: created(setSourceId) });
 
   useEffect(() => {
     setRequirementId(reqs.length === 1 ? reqs[0].id : '');
@@ -113,8 +124,10 @@ function ManualCandidateForm({ state, onState, onClose }: { state: AppState; onS
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    if (!f.fullName.trim() || !f.career.trim()) return setError('Ingresa al menos el nombre completo y la carrera.');
-    if (!positionId || !sourceId) return setError('Elige el puesto y la fuente.');
+    if (!f.fullName.trim()) return setError('Ingresa al menos el nombre completo.');
+    if (posSel.pending || reqSel.pending || srcSel.pending)
+      return setError('Termina de crear lo que dejaste abierto (o cancélalo) antes de registrar.');
+    if (!positionId || !sourceId) return setError('Elige el puesto y la fuente, o créalos con «+ Nuevo…».');
     setBusy(true);
     try {
       const r = await apiFetch<{ state: AppState }>('/api/candidates', {
@@ -154,43 +167,51 @@ function ManualCandidateForm({ state, onState, onClose }: { state: AppState; onS
         <div className="grid grid-cols-3 gap-3">
           <div>
             <label className={labelCls}>Puesto *</label>
-            <select className={inputCls} value={positionId} onChange={(e) => setPositionId(e.target.value)}>
+            <select className={inputCls} value={posSel.value} onChange={posSel.onChange} disabled={posSel.disabled}>
+              {!positionId && <option value="">Elige un puesto…</option>}
               {state.positions.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name} — {p.area}
                 </option>
               ))}
+              {posSel.newOption}
             </select>
           </div>
           <div>
             <label className={labelCls}>Requerimiento</label>
-            <select className={inputCls} value={requirementId} onChange={(e) => setRequirementId(e.target.value)}>
+            <select className={inputCls} value={reqSel.value} onChange={reqSel.onChange} disabled={reqSel.disabled}>
               <option value="">Sin requerimiento</option>
               {reqs.map((r) => (
                 <option key={r.id} value={r.id}>
                   {r.title} · {r.filledCount}/{r.vacancies} plazas
                 </option>
               ))}
+              {reqSel.newOption}
             </select>
           </div>
           <div>
             <label className={labelCls}>Fuente *</label>
-            <select className={inputCls} value={sourceId} onChange={(e) => setSourceId(e.target.value)}>
+            <select className={inputCls} value={srcSel.value} onChange={srcSel.onChange} disabled={srcSel.disabled}>
+              {!sourceId && <option value="">Elige una fuente…</option>}
               {state.jobBoards.map((b) => (
                 <option key={b.id} value={b.id}>
                   {b.name}
                 </option>
               ))}
+              {srcSel.newOption}
             </select>
           </div>
         </div>
+        {posSel.panel}
+        {reqSel.panel}
+        {srcSel.panel}
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className={labelCls}>Nombre completo *</label>
             <input className={inputCls} value={f.fullName} onChange={set('fullName')} />
           </div>
           <div>
-            <label className={labelCls}>Carrera *</label>
+            <label className={labelCls}>Carrera</label>
             <input className={inputCls} value={f.career} onChange={set('career')} />
           </div>
         </div>
@@ -805,7 +826,17 @@ export const CandidatesDashboard: React.FC<ModuleProps> = ({ state, onState, nav
         </div>
       </section>
 
-      {showUpload && <UploadCvDialog open={showUpload} state={state} onDone={onState} onClose={() => setShowUpload(false)} />}
+      {showUpload && (
+        <UploadCvDialog
+          open={showUpload}
+          state={state}
+          onDone={(s) => {
+            onState(s);
+            setShowUpload(false);
+          }}
+          onClose={() => setShowUpload(false)}
+        />
+      )}
       {showManual && <ManualCandidateForm state={state} onState={onState} onClose={() => setShowManual(false)} />}
     </div>
   );

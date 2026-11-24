@@ -28,6 +28,7 @@ import { loadLastSummary, saveLastSummary, SYNC_EVENT } from '../../sync/autoSyn
 import { positionPath } from '../../utils/orgTree';
 import { Badge, Button, Card, ConfirmDialog, EmptyState, Field, Modal, Notice, SectionHeader, formatDateTime, inputClass } from './ui';
 import { UploadCvDialog } from './UploadCvDialog';
+import { useCreatable } from '../common/creatable';
 import { SyncSummaryDialog } from './SyncSummaryDialog';
 
 export interface CvFolderModuleProps {
@@ -676,16 +677,25 @@ function MoveCvDialog({
   const [sourceId, setSourceId] = useState(candidate.sourceBoardId);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [latest, setLatest] = useState<AppState | null>(null);
+  const current = latest ?? state; // incluye lo creado al vuelo
+  const created = (setId: (id: string) => void) => (id: string, s: AppState | null) => {
+    if (s) setLatest(s);
+    setId(id);
+  };
+  const posSel = useCreatable({ kind: 'puesto', state: current, value: positionId, onSelect: setPositionId, onCreated: created(setPositionId) });
+  const srcSel = useCreatable({ kind: 'fuente', state: current, value: sourceId, onSelect: setSourceId, onCreated: created(setSourceId) });
   const positionOptions = useMemo(
     () =>
-      state.positions
+      current.positions
         .map((p) => ({ id: p.id, label: p.area ? `${p.name} — ${p.area}` : p.name }))
         .sort((a, b) => a.label.localeCompare(b.label, 'es')),
-    [state.positions],
+    [current.positions],
   );
-  const pos = state.positions.find((p) => p.id === positionId);
-  const src = state.jobBoards.find((s) => s.id === sourceId);
+  const pos = current.positions.find((p) => p.id === positionId);
+  const src = current.jobBoards.find((s) => s.id === sourceId);
   const unchanged = positionId === candidate.positionId && sourceId === candidate.sourceBoardId;
+  const close = () => (latest ? onDone(latest) : onClose());
 
   async function save() {
     setBusy(true);
@@ -707,13 +717,13 @@ function MoveCvDialog({
     <Modal
       title={`Mover CV de ${candidate.fullName || candidate.cvFileName}`}
       subtitle="Cambia el puesto o la fuente; el archivo se mueve también en el servidor."
-      onClose={onClose}
+      onClose={close}
       footer={
         <>
-          <Button onClick={onClose} disabled={busy}>
+          <Button onClick={close} disabled={busy}>
             Cancelar
           </Button>
-          <Button variant="primary" onClick={save} loading={busy} disabled={unchanged}>
+          <Button variant="primary" onClick={save} loading={busy} disabled={unchanged || posSel.pending || srcSel.pending}>
             Mover
           </Button>
         </>
@@ -721,25 +731,29 @@ function MoveCvDialog({
     >
       <div className="space-y-4">
         <Field label="Puesto">
-          <select className={inputClass} value={positionId} onChange={(e) => setPositionId(e.target.value)}>
+          <select className={inputClass} value={posSel.value} onChange={posSel.onChange} disabled={posSel.disabled}>
             {positionOptions.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.label}
               </option>
             ))}
+            {posSel.newOption}
           </select>
         </Field>
+        {posSel.panel}
         <Field label="Fuente">
-          <select className={inputClass} value={sourceId} onChange={(e) => setSourceId(e.target.value)}>
-            {state.jobBoards
-              .filter((s) => s.active || s.id === candidate.sourceBoardId)
+          <select className={inputClass} value={srcSel.value} onChange={srcSel.onChange} disabled={srcSel.disabled}>
+            {current.jobBoards
+              .filter((s) => s.active || s.id === candidate.sourceBoardId || s.id === sourceId)
               .map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.name}
                 </option>
               ))}
+            {srcSel.newOption}
           </select>
         </Field>
+        {srcSel.panel}
         <div className="rounded-lg bg-[#F7F7F8] px-3 py-2 text-xs text-[#5C626D]">
           Destino:{' '}
           <code className="font-mono-tabular text-[#23272E]">

@@ -1,9 +1,10 @@
 import type { AiVerdict, Candidate, CandidateDecision } from '../types';
 
+// Igual que la API: sin pasos obligatorios, desde cualquier estado se puede aprobar, rechazar o contratar.
 export const DECISION_TRANSITIONS: Record<CandidateDecision, CandidateDecision[]> = {
-  'Pendiente de revisión': ['Aprobado', 'Rechazado'],
+  'Pendiente de revisión': ['Aprobado', 'Rechazado', 'Contratado'],
   Aprobado: ['Contratado', 'Rechazado'],
-  Rechazado: ['Aprobado'],
+  Rechazado: ['Aprobado', 'Contratado'],
   Contratado: ['Aprobado', 'Rechazado'],
 };
 

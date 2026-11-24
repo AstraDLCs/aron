@@ -17,6 +17,7 @@ import {
 import type { AppState, Candidate, CandidateDecision, JobUrgency, ModuleProps, RecruitmentCriterion } from '../types';
 import { apiFetch, errorMessage } from '../api/client';
 import { toast } from './common/Toast';
+import { useCreatable } from './common/creatable';
 import { AiBlock, Badge, btnGhost, btnPrimary, card, CvActions, inputCls, labelCls } from './CandidatesDashboard';
 import { agreeWithAi, allowedNextDecisions, DECISION_ACTION_LABEL, sortSelectionQueue } from '../utils/decisions';
 import { decisionBadgeClass, formatDate, formatDateTime, TONE_CLASSES, verdictBadgeClass } from '../utils/labels';
@@ -36,12 +37,20 @@ function NewRequirementForm({ state, onState, onClose, initialPositionId }: { st
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const pos = state.positions.find((p) => p.id === positionId);
+  const posSel = useCreatable({
+    kind: 'puesto', state, value: positionId, onSelect: setPositionId,
+    onCreated: (id, s) => {
+      if (s) onState(s);
+      setPositionId(id);
+    },
+  });
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     const q = Number(quantity);
-    if (!positionId) return setError('Elige un puesto del organigrama.');
+    if (posSel.pending) return setError('Termina de crear el puesto (o cancélalo) antes de guardar.');
+    if (!positionId) return setError('Elige un puesto o crea uno con «+ Nuevo puesto…».');
     if (!Number.isInteger(q) || q < 1 || q > 500) return setError('Las plazas deben estar entre 1 y 500.');
     setBusy(true);
     try {
@@ -76,21 +85,22 @@ function NewRequirementForm({ state, onState, onClose, initialPositionId }: { st
         </button>
       </div>
       {error && <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
-      {state.positions.length === 0 ? (
-        <p className="text-sm text-[#5C626D]">Primero crea puestos en el Organigrama.</p>
-      ) : (
+      {(
         <>
           <div>
             <label className={labelCls}>Puesto del organigrama</label>
-            <select className={inputCls} value={positionId} onChange={(e) => setPositionId(e.target.value)}>
+            <select className={inputCls} value={posSel.value} onChange={posSel.onChange} disabled={posSel.disabled}>
+              {!positionId && <option value="">Elige un puesto…</option>}
               {state.positions.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name} — {p.area}
                 </option>
               ))}
+              {posSel.newOption}
             </select>
             {pos?.requiredSkills && <p className="mt-1 text-xs text-[#5C626D]">Competencias del puesto: {pos.requiredSkills}</p>}
           </div>
+          {posSel.panel}
           <div className="grid grid-cols-3 gap-2">
             <div>
               <label className={labelCls}>Plazas</label>
@@ -287,12 +297,17 @@ function DecisionPanel({ c, state, onState }: { c: Candidate; state: AppState; o
   const agree = agreeWithAi(c.aiVerdict);
   const agreeAllowed = agree != null && next.includes(agree);
 
+  const reqSel = useCreatable({
+    kind: 'requerimiento', state, value: requirementId, onSelect: setRequirementId, positionId: c.positionId,
+    onCreated: (id, s) => {
+      if (s) onState(s);
+      setRequirementId(id);
+    },
+  });
+
   const decide = async (decision: CandidateDecision) => {
     setError(null);
-    if (decision === 'Contratado' && !c.requirementId && !requirementId) {
-      setError('Para contratar, elige el requerimiento cuya plaza se cubre.');
-      return;
-    }
+    // Sin requerimiento elegido, la API crea uno de 1 plaza al contratar: nada bloquea la decisión.
     if (teachAi && (!critTitle.trim() || !critRule.trim())) {
       setError('Para enseñar a la IA indica el título y la regla del criterio.');
       return;
@@ -380,17 +395,20 @@ function DecisionPanel({ c, state, onState }: { c: Candidate; state: AppState; o
           </div>
         </div>
         {!c.requirementId && next.includes('Contratado') && (
-          <div>
+          <div className="space-y-2">
+            <div>
             <label className={labelCls}>Requerimiento que se cubre al contratar</label>
-            <select className={inputCls} value={requirementId} onChange={(e) => setRequirementId(e.target.value)}>
-              <option value="">Elegir requerimiento…</option>
+            <select className={inputCls} value={reqSel.value} onChange={reqSel.onChange} disabled={reqSel.disabled}>
+              <option value="">Automático: si no hay plaza libre, se crea uno de 1 plaza</option>
               {openReqs.map((r) => (
                 <option key={r.id} value={r.id}>
                   {r.title} · {r.filledCount}/{r.vacancies} plazas · {formatDate(r.openedAt)}
                 </option>
               ))}
+              {reqSel.newOption}
             </select>
-            {openReqs.length === 0 && <p className="mt-1 text-xs text-amber-700">No hay requerimientos abiertos para este puesto.</p>}
+            </div>
+            {reqSel.panel}
           </div>
         )}
 

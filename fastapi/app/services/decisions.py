@@ -17,8 +17,6 @@ from app.models.user import User
 
 HIRED = "Contratado"
 
-MSG_NO_REQUIREMENT = "La postulación no tiene un requerimiento abierto asignado"
-MSG_COVERED = "El requerimiento ya está cubierto"
 MSG_REQUIREMENT_MISSING = "El requerimiento no existe"
 MSG_REQUIREMENT_OTHER_POSITION = "El requerimiento no corresponde al puesto de la postulación"
 
@@ -43,23 +41,48 @@ def _lock_requirement(db: Session, requirement_id: str) -> Requirement | None:
     return db.scalar(select(Requirement).where(Requirement.id == requirement_id).with_for_update())
 
 
-def _requirement_for_hire(db: Session, candidate: Candidate, requirement_id: str | None) -> Requirement:
-    """El requerimiento (bloqueado) en el que se contrata: el indicado o, si no, el que ya tiene la postulación."""
-    target_id = requirement_id or candidate.requirement_id
-    if not target_id:
-        raise DecisionError(409, MSG_NO_REQUIREMENT)
-    requirement = _lock_requirement(db, target_id)
-    if requirement is None:
-        raise DecisionError(422, MSG_REQUIREMENT_MISSING)
-    if requirement.position_id != candidate.position_id:
-        raise DecisionError(422, MSG_REQUIREMENT_OTHER_POSITION)
-    if requirement.status == "Cubierto":
-        raise DecisionError(409, MSG_COVERED)
-    if requirement.status != "Abierto":
-        raise DecisionError(409, MSG_NO_REQUIREMENT)
-    if _hired_count(db, requirement.id, excluding=candidate.id) >= requirement.quantity:
-        raise DecisionError(409, MSG_COVERED)
-    return requirement
+def _has_room(db: Session, requirement: Requirement | None, candidate: Candidate) -> bool:
+    return (
+        requirement is not None
+        and requirement.position_id == candidate.position_id
+        and requirement.status == "Abierto"
+        and _hired_count(db, requirement.id, excluding=candidate.id) < requirement.quantity
+    )
+
+
+def _auto_requirement(db: Session, candidate: Candidate, actor: User, ip: str | None) -> Requirement:
+    """Contratar nunca se bloquea: si no hay requerimiento con plaza libre, se crea uno de 1 plaza."""
+    name = db.get(Person, candidate.person_id).full_name
+    position = db.get(Position, candidate.position_id).name
+    req = Requirement(
+        position_id=candidate.position_id, quantity=1, urgency="Media", target_days_to_fill=30,
+        context=f"Creado automáticamente al contratar a {name}.", created_by_name=actor.full_name,
+    )
+    db.add(req)
+    db.flush()
+    log_action(
+        db, actor=actor, action="requirement.create", entity_type="requirement", entity_id=req.id,
+        summary=f"Creó un requerimiento de 1 plaza para {position} al contratar a {name}",
+        details={"auto": True, "candidateId": candidate.id}, ip=ip,
+    )
+    return req
+
+
+def _requirement_for_hire(db: Session, candidate: Candidate, requirement_id: str | None,
+                          actor: User, ip: str | None) -> Requirement:
+    if requirement_id:  # elegido a mano: debe existir y ser del mismo puesto
+        requirement = _lock_requirement(db, requirement_id)
+        if requirement is None:
+            raise DecisionError(422, MSG_REQUIREMENT_MISSING)
+        if requirement.position_id != candidate.position_id:
+            raise DecisionError(422, MSG_REQUIREMENT_OTHER_POSITION)
+        if _has_room(db, requirement, candidate):
+            return requirement
+        return _auto_requirement(db, candidate, actor, ip)
+    current = _lock_requirement(db, candidate.requirement_id) if candidate.requirement_id else None
+    if _has_room(db, current, candidate):
+        return current
+    return _auto_requirement(db, candidate, actor, ip)
 
 
 def apply_decision(
@@ -80,7 +103,7 @@ def apply_decision(
 
     requirement: Requirement | None = None
     if decision == HIRED:
-        requirement = _requirement_for_hire(db, candidate, requirement_id)
+        requirement = _requirement_for_hire(db, candidate, requirement_id, actor, ip)
     elif previous == HIRED and candidate.requirement_id:
         requirement = _lock_requirement(db, candidate.requirement_id)
 

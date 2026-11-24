@@ -4,12 +4,9 @@ AI_STATUSES = ('En cola', 'Procesando', 'Clasificado', 'Error IA', 'Sin texto', 
 AI_VERDICTS = ('Pre-aprobado', 'Pre-denegado')
 
 DECISIONS = ('Pendiente de revisión', 'Aprobado', 'Rechazado', 'Contratado')
-DECISION_TRANSITIONS = {
-    'Pendiente de revisión': {'Aprobado', 'Rechazado'},
-    'Aprobado': {'Contratado', 'Rechazado'},
-    'Rechazado': {'Aprobado'},
-    'Contratado': {'Aprobado', 'Rechazado'},
-}
+# Sin pasos obligatorios: desde cualquier estado se puede aprobar, rechazar o contratar (la bitácora deja el rastro).
+_FINAL_DECISIONS = {'Aprobado', 'Rechazado', 'Contratado'}
+DECISION_TRANSITIONS = {d: _FINAL_DECISIONS - {d} for d in DECISIONS}
 
 REQUIREMENT_STATUSES = ('Abierto', 'Cubierto', 'Cancelado')
 URGENCIES = ('Urgente', 'Media', 'Planificada')

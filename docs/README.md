@@ -226,6 +226,15 @@ Cuatro formas de cargar CV:
 3. Crear los requerimientos (plazas por puesto).
 4. Cargar los CV por cualquiera de las cuatro vías.
 5. La IA pre-aprueba o pre-deniega cada postulación (o queda `Sin IA` con puntaje por reglas).
-6. Una persona decide: Aprobado o Rechazado. La IA nunca decide sola.
-7. Al marcar Contratado se cubre una plaza del requerimiento.
+6. Una persona decide: Aprobado, Rechazado o Contratado, desde cualquier estado y sin pasos obligatorios. La IA
+   nunca decide sola.
+7. Al marcar Contratado se cubre una plaza del requerimiento. Si no hay requerimiento con plaza libre, se crea uno
+   de 1 plaza automáticamente, y queda en la bitácora.
 8. Consultar la bitácora (quién hizo qué) y descargar los reportes.
+
+Nada en la interfaz exige ir a otra pantalla primero:
+- Cada selección de puesto, fuente o requerimiento tiene «+ Nuevo…» para crearlo ahí mismo: al subir CV, en el alta
+  manual, al mover un CV, al crear un requerimiento, al contratar, al mover un puesto en el organigrama y al enviar
+  una propuesta a una fuente.
+- Al sincronizar o importar una carpeta, si un puesto o una fuente no existe, se crea con el nombre de la carpeta
+  (puesto con área «Sin área», fuente «Bolsa Nacional») y sus CV se suben en la misma pasada.

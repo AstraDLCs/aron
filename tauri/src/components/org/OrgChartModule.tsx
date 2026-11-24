@@ -21,6 +21,7 @@ import { apiFetch, errorMessage } from '../../api/client';
 import { buildTree, descendantsOf, positionPath, type TreeNode } from '../../utils/orgTree';
 import { Badge, Button, Card, ConfirmDialog, EmptyState, Field, Modal, Notice, SectionHeader, inputClass } from '../cv/ui';
 import { PositionForm } from './PositionForm';
+import { useCreatable } from '../common/creatable';
 
 export interface OrgChartModuleProps {
   state: AppState;
@@ -491,7 +492,7 @@ export function OrgChartModule({ state, onState, navigate }: OrgChartModuleProps
       {moving && (
         <MoveDialog
           position={moving}
-          positions={positions}
+          state={state}
           onClose={closeDialogs}
           onDone={(s) => {
             onState(s);
@@ -542,15 +543,18 @@ export function OrgChartModule({ state, onState, navigate }: OrgChartModuleProps
 
 function MoveDialog({
   position,
-  positions,
+  state,
   onClose,
   onDone,
 }: {
   position: Position;
-  positions: Position[];
+  state: AppState;
   onClose: () => void;
   onDone: (s: AppState) => void;
 }) {
+  const [latest, setLatest] = useState<AppState | null>(null);
+  const current = latest ?? state; // incluye el superior creado al vuelo
+  const positions = current.positions;
   const excluded = useMemo(() => descendantsOf(position.id, positions), [position.id, positions]);
   const options = useMemo(
     () =>
@@ -563,6 +567,14 @@ function MoveDialog({
   const [target, setTarget] = useState<string>(position.parentId ?? '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const parentSel = useCreatable({
+    kind: 'puesto', state: current, value: target, onSelect: setTarget,
+    onCreated: (id, s) => {
+      if (s) setLatest(s);
+      setTarget(id);
+    },
+  });
+  const close = () => (latest ? onDone(latest) : onClose());
 
   async function save() {
     setBusy(true);
@@ -583,29 +595,36 @@ function MoveDialog({
   return (
     <Modal
       title={`Mover ${position.name}`}
-      subtitle="Elige el nuevo puesto superior. No aparecen el propio puesto ni sus subordinados."
-      onClose={onClose}
+      subtitle="Elige el nuevo puesto superior, o créalo. No aparecen el propio puesto ni sus subordinados."
+      onClose={close}
       footer={
         <>
-          <Button onClick={onClose} disabled={busy}>
+          <Button onClick={close} disabled={busy}>
             Cancelar
           </Button>
-          <Button variant="primary" onClick={save} loading={busy} disabled={(position.parentId ?? '') === target}>
+          <Button
+            variant="primary"
+            onClick={save}
+            loading={busy}
+            disabled={(position.parentId ?? '') === target || parentSel.pending}
+          >
             Mover
           </Button>
         </>
       }
     >
       <Field label="Nuevo puesto superior">
-        <select className={inputClass} value={target} onChange={(e) => setTarget(e.target.value)}>
+        <select className={inputClass} value={parentSel.value} onChange={parentSel.onChange} disabled={parentSel.disabled}>
           <option value="">(Sin superior: puesto raíz)</option>
           {options.map((o) => (
             <option key={o.id} value={o.id}>
               {o.label}
             </option>
           ))}
+          {parentSel.newOption}
         </select>
       </Field>
+      {parentSel.panel && <div className="mt-3">{parentSel.panel}</div>}
       {error && (
         <div className="mt-3">
           <Notice kind="error">{error}</Notice>

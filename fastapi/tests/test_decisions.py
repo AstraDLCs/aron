@@ -83,31 +83,40 @@ def test_invalid_decision_value_is_422(client, db, make_user, rrhh_root):
     assert unauth.status_code == 401
 
 
-def test_hire_requires_open_requirement_with_room(client, db, make_user, rrhh_root):
+def _auto_created(db):
+    return [e for e in _logs(db, "requirement.create") if (e.details or {}).get("auto")]
+
+
+def test_hire_without_requirement_creates_one_slot_requirement(client, db, make_user, rrhh_root):
     _, h = make_user()
-    _, _, (a,) = _setup(client, h, with_requirement=False)
-    _decide(client, h, a, "Aprobado")
-    r = _decide(client, h, a, "Contratado")
-    assert r.status_code == 409
-    assert r.json()["detail"] == "La postulación no tiene un requerimiento abierto asignado"
+    pos, _, (a,) = _setup(client, h, with_requirement=False)
+    r = _decide(client, h, a, "Contratado")  # directo desde Pendiente, sin requerimiento: no se bloquea
+    assert r.status_code == 200, r.text
+    cand = candidate_in(r.json()["state"], a)
+    assert cand["decision"] == "Contratado" and cand["requirementId"]
+    need = _need(r.json()["state"], cand["requirementId"])
+    assert need["positionId"] == pos["id"] and need["vacancies"] == 1 and need["status"] == "Cubierto"
+    (log,) = _auto_created(db)
+    assert log.summary == "Creó un requerimiento de 1 plaza para Operador de Planta al contratar a Juan Carlos Quispe Mamani"
 
 
-def test_hire_covers_requirement_and_blocks_next(client, db, make_user, rrhh_root):
+def test_hire_when_requirement_is_full_creates_another(client, db, make_user, rrhh_root):
     _, h = make_user()
     _, req, (a, b) = _setup(client, h, quantity=1, n=2)
-    _decide(client, h, a, "Aprobado")
-    _decide(client, h, b, "Aprobado")
     r = _decide(client, h, a, "Contratado")
     assert r.status_code == 200, r.text
     need = _need(r.json()["state"], req["id"])
     assert need["status"] == "Cubierto" and need["filledCount"] == 1
     covered = _logs(db, "requirement.covered")
     assert len(covered) == 1 and covered[0].user_name == "Sistema" and covered[0].entity_id == req["id"]
+    assert not _auto_created(db)
 
     r = _decide(client, h, b, "Contratado")
-    assert r.status_code == 409
-    assert r.json()["detail"] == "El requerimiento ya está cubierto"
-    assert candidate_in(client.get("/api/state", headers=h).json(), b)["decision"] == "Aprobado"
+    assert r.status_code == 200, r.text
+    cand_b = candidate_in(r.json()["state"], b)
+    assert cand_b["decision"] == "Contratado" and cand_b["requirementId"] != req["id"]
+    assert _need(r.json()["state"], req["id"])["filledCount"] == 1
+    assert len(_auto_created(db)) == 1
 
 
 def test_hire_with_room_for_two_keeps_requirement_open(client, db, make_user, rrhh_root):
@@ -147,15 +156,17 @@ def test_hire_rejects_requirement_of_other_position(client, db, make_user, rrhh_
     assert candidate_in(client.get("/api/state", headers=h).json(), a)["decision"] == "Aprobado"
 
 
-def test_hire_in_cancelled_requirement_is_409(client, db, make_user, rrhh_root):
+def test_hire_in_cancelled_requirement_uses_a_new_one(client, db, make_user, rrhh_root):
     _, h = make_user()
     _, req, (a,) = _setup(client, h)
     _decide(client, h, a, "Aprobado")
     patch = client.patch(f"/api/requirements/{req['id']}", json={"status": "Cancelado"}, headers=h)
     assert patch.status_code == 200
     r = _decide(client, h, a, "Contratado")
-    assert r.status_code == 409
-    assert r.json()["detail"] == "La postulación no tiene un requerimiento abierto asignado"
+    assert r.status_code == 200, r.text
+    assert candidate_in(r.json()["state"], a)["requirementId"] != req["id"]
+    assert _need(r.json()["state"], req["id"])["status"] == "Cancelado"
+    assert len(_auto_created(db)) == 1
 
 
 def test_undo_hire_reopens_requirement(client, db, make_user, rrhh_root):
@@ -214,9 +225,8 @@ def test_decision_audit_records_actor(client, db, make_user, rrhh_root):
 def test_hire_summary_and_failed_decision_leaves_no_audit(client, db, make_user, rrhh_root):
     _, h = make_user()
     _, _, (a,) = _setup(client, h)
-    assert _decide(client, h, a, "Contratado").status_code == 409
+    assert _decide(client, h, a, "Pendiente de revisión").status_code == 409  # mismo estado: no cambia nada
     assert not _logs(db, "candidate.decision")
-    _decide(client, h, a, "Aprobado")
     _decide(client, h, a, "Contratado")
     assert _logs(db, "candidate.decision")[-1].summary == "Contrató a Juan Carlos Quispe Mamani para Operador de Planta"
 

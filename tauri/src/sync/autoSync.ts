@@ -51,7 +51,7 @@ export async function startupSync(state: AppState, onState: (s: AppState) => voi
         /* sin avisos */
       }
     }
-    if (summary.uploaded > 0) {
+    if (summary.uploaded > 0 || summary.createdPositions.length > 0 || summary.createdSources.length > 0) {
       const fresh = await apiFetch<AppState>('/api/state');
       onState(fresh);
     }

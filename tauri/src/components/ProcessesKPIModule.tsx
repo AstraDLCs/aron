@@ -5,6 +5,7 @@ import { DonutGaugeChart, GroupedBoardsChart } from './ExecutiveCharts';
 import { apiFetch, errorMessage } from '../api/client';
 import { DownloadButton } from './common/DownloadButton';
 import { toast } from './common/Toast';
+import { useCreatable } from './common/creatable';
 
 export const ProcessesKPIModule: React.FC<ModuleProps & { initialCandidateId?: string | null }> = ({ state, onState }) => {
   const jobNeeds = state.jobNeeds;
@@ -14,6 +15,13 @@ export const ProcessesKPIModule: React.FC<ModuleProps & { initialCandidateId?: s
   const [selectedBoardId, setSelectedBoardId] = useState(jobBoards.find((b) => b.active)?.id ?? jobBoards[0]?.id ?? '');
   const [dispatchNotice, setDispatchNotice] = useState<string | null>(null);
   const [isSending, setIsSending] = useState(false);
+  const boardSel = useCreatable({
+    kind: 'fuente', state, value: selectedBoardId, onSelect: setSelectedBoardId,
+    onCreated: (id, s) => {
+      if (s) onState(s);
+      setSelectedBoardId(id);
+    },
+  });
 
   const rankedBoards = useMemo(
     () => [...jobBoards].sort((a, b) => b.candidatesReceived - a.candidatesReceived),
@@ -27,7 +35,7 @@ export const ProcessesKPIModule: React.FC<ModuleProps & { initialCandidateId?: s
 
   const handleDispatchProposal = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedNeedId || !selectedBoardId) return;
+    if (!selectedNeedId || !selectedBoardId || boardSel.pending) return;
     setIsSending(true);
     setDispatchNotice(null);
     try {
@@ -262,16 +270,20 @@ export const ProcessesKPIModule: React.FC<ModuleProps & { initialCandidateId?: s
               </label>
               <select
                 id="dispatch-board"
-                value={selectedBoardId}
-                onChange={(e) => setSelectedBoardId(e.target.value)}
+                value={boardSel.value}
+                onChange={boardSel.onChange}
+                disabled={boardSel.disabled}
                 className="mt-1 w-full min-h-[44px] rounded-lg border border-[#D8DCE0] bg-white px-3 text-sm text-[#23272E]"
               >
+                {!selectedBoardId && <option value="">Elige una fuente…</option>}
                 {jobBoards.map((b) => (
                   <option key={b.id} value={b.id}>
                     {b.name} ({b.candidatesReceived} candidatos)
                   </option>
                 ))}
+                {boardSel.newOption}
               </select>
+              {boardSel.panel && <div className="mt-2">{boardSel.panel}</div>}
             </div>
 
             {dispatchNotice && (

@@ -1,6 +1,6 @@
 [package]
 name = "pulso-laboral"
-version = "0.2.1"
+version = "0.2.2"
 description = "Pulso Laboral"
 edition = "2021"
 

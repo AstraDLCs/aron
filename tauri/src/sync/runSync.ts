@@ -22,6 +22,9 @@ export interface SyncSummary {
   duplicates: number;
   deletedBefore: number;
   unmatchedFolders: UnmatchedFolder[];
+  /** Puestos y fuentes creados al vuelo a partir de carpetas que no existían en la app. */
+  createdPositions: string[];
+  createdSources: string[];
   skipped: { path: string; reason: string }[];
   errors: { path: string; message: string }[];
   uploadedFiles: SyncFileRef[];
@@ -62,6 +65,49 @@ export function apiErrorCode(e: unknown): string | undefined {
   return d && typeof d === 'object' ? d.code : undefined;
 }
 
+/** «agente-de-seguridad-patrimonial» → «Agente de seguridad patrimonial». */
+export function humanizeFolder(folder: string): string {
+  const s = folder.replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim();
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : folder;
+}
+
+/**
+ * Nada bloquea la sincronización: cada carpeta sin puesto o fuente crea uno nuevo con ese nombre
+ * (puesto con área «Sin área»; fuente «Bolsa Nacional»). Devuelve los que no se pudieron crear.
+ */
+async function createMissing(
+  unmatched: UnmatchedFolder[],
+  positions: Named[],
+  sources: Named[],
+  summary: SyncSummary,
+): Promise<UnmatchedFolder[]> {
+  const left: UnmatchedFolder[] = [];
+  for (const u of unmatched) {
+    const name = humanizeFolder(u.folder);
+    try {
+      if (u.kind === 'puesto') {
+        const r = await apiFetch<{ position: Named }>('/api/positions', {
+          method: 'POST',
+          json: { name, folderName: u.folder, area: 'Sin área' },
+        });
+        positions.push(r.position);
+        summary.createdPositions.push(r.position.name);
+      } else {
+        const r = await apiFetch<{ source: Named }>('/api/sources', {
+          method: 'POST',
+          json: { name, folderName: u.folder, category: 'Bolsa Nacional' },
+        });
+        sources.push(r.source);
+        summary.createdSources.push(r.source.name);
+      }
+    } catch (e) {
+      left.push(u);
+      summary.errors.push({ path: u.folder, message: `No se pudo crear ${u.kind === 'puesto' ? 'el puesto' : 'la fuente'} «${name}»: ${anyErrorMessage(e)}` });
+    }
+  }
+  return left;
+}
+
 function ref(e: SyncFileRef): SyncFileRef {
   return { path: e.path, fileName: e.fileName, positionFolder: e.positionFolder, sourceFolder: e.sourceFolder };
 }
@@ -93,6 +139,8 @@ export async function runSync(opts: {
     duplicates: 0,
     deletedBefore: 0,
     unmatchedFolders: [],
+    createdPositions: [],
+    createdSources: [],
     skipped: [],
     errors: [],
     uploadedFiles: [],
@@ -114,7 +162,17 @@ export async function runSync(opts: {
   summary.scanned = scan.entries?.length ?? 0;
   summary.skipped = scan.skipped ?? [];
 
-  const plan = planMatches({ ...scan, entries: scan.entries ?? [] }, opts.positions, opts.sources);
+  const entries = { ...scan, entries: scan.entries ?? [] };
+  const positions = [...opts.positions];
+  const sources = [...opts.sources];
+  let plan = planMatches(entries, positions, sources);
+  if (plan.unmatchedFolders.length > 0) {
+    // Primero los puestos: una fuente solo se detecta como faltante dentro de un puesto que existe.
+    await createMissing(plan.unmatchedFolders.filter((u) => u.kind === 'puesto'), positions, sources, summary);
+    plan = planMatches(entries, positions, sources);
+    await createMissing(plan.unmatchedFolders.filter((u) => u.kind === 'fuente'), positions, sources, summary);
+    plan = planMatches(entries, positions, sources);
+  }
   summary.unmatchedFolders = plan.unmatchedFolders;
   summary.duplicates += plan.inScanDuplicates.length;
   summary.duplicateFiles.push(...plan.inScanDuplicates.map(ref));
@@ -183,6 +241,8 @@ export async function runSync(opts: {
 
 export function summaryLine(s: SyncSummary): string {
   const parts = [`${s.uploaded} nuevos`, `${s.duplicates} repetidos`];
+  if (s.createdPositions.length) parts.push(`${s.createdPositions.length} puestos creados`);
+  if (s.createdSources.length) parts.push(`${s.createdSources.length} fuentes creadas`);
   if (s.deletedBefore) parts.push(`${s.deletedBefore} eliminados antes`);
   if (s.unmatchedFolders.length) parts.push(`${s.unmatchedFolders.length} carpetas sin coincidencia`);
   if (s.errors.length) parts.push(`${s.errors.length} con error`);

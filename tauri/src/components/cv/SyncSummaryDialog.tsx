@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { AlertTriangle, Ban, CheckCircle2, Copy, FolderX, XCircle } from 'lucide-react';
+import { AlertTriangle, Ban, CheckCircle2, Copy, FolderPlus, FolderX, XCircle } from 'lucide-react';
 import type { SyncSummary } from '../../sync/runSync';
 import { Button, Modal, Notice, formatDateTime } from './ui';
 
@@ -122,13 +122,35 @@ export function SyncSummaryDialog({ summary, onClose }: { summary: SyncSummary; 
           </ul>
         </Section>
         <Section
+          icon={<FolderPlus className="h-4 w-4 text-emerald-700" />}
+          title="Puestos y fuentes creados a partir de las carpetas"
+          count={(summary.createdPositions?.length ?? 0) + (summary.createdSources?.length ?? 0)}
+          defaultOpen
+        >
+          <p className="mb-1.5 text-[#5C626D]">
+            No existían en la app, así que se crearon con el nombre de la carpeta. Puedes completarlos en Organigrama.
+          </p>
+          <ul className="space-y-1">
+            {(summary.createdPositions ?? []).map((n) => (
+              <li key={`p-${n}`}>
+                Puesto: <strong>{n}</strong>
+              </li>
+            ))}
+            {(summary.createdSources ?? []).map((n) => (
+              <li key={`f-${n}`}>
+                Fuente: <strong>{n}</strong>
+              </li>
+            ))}
+          </ul>
+        </Section>
+        <Section
           icon={<FolderX className="h-4 w-4 text-[#5C626D]" />}
-          title="Carpetas que no coinciden con ningún puesto o fuente"
+          title="Carpetas que no se pudieron usar"
           count={summary.unmatchedFolders.length}
           defaultOpen
         >
           <p className="mb-1.5 text-[#5C626D]">
-            El nombre de la carpeta debe ser el del puesto (o su carpeta) y, dentro, el de la fuente.
+            No se pudo crear el puesto o la fuente para estas carpetas; el motivo está en «Errores».
           </p>
           <ul className="space-y-1">
             {summary.unmatchedFolders.map((u) => (

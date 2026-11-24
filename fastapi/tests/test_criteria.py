@@ -161,7 +161,9 @@ def test_teach_ai_not_created_when_transition_fails(client, db, make_user, rrhh_
     _, _, ids = _two_areas(client, h)
     r = client.post(
         f"/api/candidates/{ids['planta']}/decision",
-        json={"decision": "Contratado", "teachAi": True, "criterionTitle": "X", "criterionRule": "y"}, headers=h,
+        # repetir el estado actual es la única transición que falla
+        json={"decision": "Pendiente de revisión", "teachAi": True, "criterionTitle": "X", "criterionRule": "y"},
+        headers=h,
     )
     assert r.status_code == 409
     assert client.get("/api/criteria", headers=h).json()["criteria"] == []

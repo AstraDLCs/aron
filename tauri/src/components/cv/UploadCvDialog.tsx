@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, Copy, FilePlus2, FileText, Loader2, Ban, Trash2, Upload, XCircle } from 'lucide-react';
 import type { AppState } from '../../types';
 import { apiFetch, errorMessage, fileNameFromPath, pickFiles, readLocalFile, mimeFromName } from '../../api/client';
+import { useCreatable } from '../common/creatable';
 import { positionPath } from '../../utils/orgTree';
 import { apiErrorCode, MAX_CV_BYTES } from '../../sync/runSync';
 import { Button, Field, Modal, Notice, formatDateTime, inputClass } from './ui';
@@ -42,8 +43,6 @@ function describeExisting(detail: unknown): string {
 }
 
 export function UploadCvDialog({ open, state, initialPositionId, initialSourceId, onDone, onClose }: UploadCvDialogProps) {
-  const positions = state.positions;
-  const sources = useMemo(() => state.jobBoards.filter((s) => s.active || s.id === initialSourceId), [state.jobBoards, initialSourceId]);
   const [positionId, setPositionId] = useState(initialPositionId ?? '');
   const [sourceId, setSourceId] = useState(initialSourceId ?? '');
   const [requirementId, setRequirementId] = useState('');
@@ -51,6 +50,29 @@ export function UploadCvDialog({ open, state, initialPositionId, initialSourceId
   const [running, setRunning] = useState(false);
   const [latest, setLatest] = useState<AppState | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Tras crear algo al vuelo o subir un CV, el diálogo trabaja con la foto más reciente.
+  const current = latest ?? state;
+  const positions = current.positions;
+  const sources = useMemo(
+    () => current.jobBoards.filter((s) => s.active || s.id === initialSourceId || s.id === sourceId),
+    [current.jobBoards, initialSourceId, sourceId],
+  );
+  const created = (set: (id: string) => void) => (id: string, s: AppState | null) => {
+    if (s) setLatest(s);
+    set(id);
+  };
+  const posSel = useCreatable({
+    kind: 'puesto', state: current, value: positionId, onSelect: setPositionId,
+    onCreated: created(setPositionId), disabled: running,
+  });
+  const srcSel = useCreatable({
+    kind: 'fuente', state: current, value: sourceId, onSelect: setSourceId,
+    onCreated: created(setSourceId), disabled: running,
+  });
+  const reqSel = useCreatable({
+    kind: 'requerimiento', state: current, value: requirementId, onSelect: setRequirementId,
+    onCreated: created(setRequirementId), positionId, disabled: running,
+  });
 
   useEffect(() => {
     if (open) {
@@ -71,15 +93,13 @@ export function UploadCvDialog({ open, state, initialPositionId, initialSourceId
     [positions],
   );
   const openReqs = useMemo(
-    () => state.jobNeeds.filter((r) => r.positionId === positionId && r.status === 'Abierto'),
-    [state.jobNeeds, positionId],
+    () => current.jobNeeds.filter((r) => r.positionId === positionId && r.status === 'Abierto'),
+    [current.jobNeeds, positionId],
   );
 
   useEffect(() => {
-    setRequirementId((cur) => {
-      if (openReqs.length === 1) return openReqs[0].id;
-      return openReqs.some((r) => r.id === cur) ? cur : '';
-    });
+    // '' = asignación automática (el requerimiento abierto más antiguo del puesto, o ninguno).
+    setRequirementId((cur) => (openReqs.some((r) => r.id === cur) ? cur : ''));
   }, [positionId, openReqs]);
 
   if (!open) return null;
@@ -117,9 +137,10 @@ export function UploadCvDialog({ open, state, initialPositionId, initialSourceId
 
   async function upload() {
     setError(null);
-    if (!positionId) return setError('Elige el puesto al que postulan estos CV.');
-    if (!sourceId) return setError('Elige la fuente de donde vienen los CV.');
-    if (openReqs.length > 1 && !requirementId) return setError('Este puesto tiene varios requerimientos abiertos: elige uno.');
+    if (posSel.pending || srcSel.pending || reqSel.pending)
+      return setError('Termina de crear lo que dejaste abierto (o cancélalo) antes de subir.');
+    if (!positionId) return setError('Elige el puesto al que postulan estos CV, o crea uno nuevo.');
+    if (!sourceId) return setError('Elige la fuente de donde vienen los CV, o crea una nueva.');
     setRunning(true);
     let last: AppState | null = latest;
     for (const f of files.filter((x) => x.status === 'pendiente')) {
@@ -198,7 +219,7 @@ export function UploadCvDialog({ open, state, initialPositionId, initialSourceId
     >
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Field label="Puesto *">
-          <select className={inputClass} value={positionId} onChange={(e) => setPositionId(e.target.value)} disabled={running}>
+          <select className={inputClass} value={posSel.value} onChange={posSel.onChange} disabled={posSel.disabled}>
             <option value="">Elige un puesto…</option>
             {positionOptions.map((p) => (
               <option key={p.id} value={p.id}>
@@ -206,40 +227,44 @@ export function UploadCvDialog({ open, state, initialPositionId, initialSourceId
                 {p.open > 0 ? ` (${p.open} req. abierto${p.open === 1 ? '' : 's'})` : ''}
               </option>
             ))}
+            {posSel.newOption}
           </select>
         </Field>
-        <Field label="Fuente *">
-          <select className={inputClass} value={sourceId} onChange={(e) => setSourceId(e.target.value)} disabled={running}>
+        <Field label="Fuente *" hint="De dónde llegó el CV: LinkedIn, Computrabajo, un referido…">
+          <select className={inputClass} value={srcSel.value} onChange={srcSel.onChange} disabled={srcSel.disabled}>
             <option value="">Elige una fuente…</option>
             {sources.map((s) => (
               <option key={s.id} value={s.id}>
                 {s.name}
               </option>
             ))}
+            {srcSel.newOption}
           </select>
         </Field>
-        {positionId && openReqs.length > 1 && (
-          <Field label="Requerimiento *" className="sm:col-span-2" hint="El puesto tiene varios requerimientos abiertos.">
-            <select
-              className={inputClass}
-              value={requirementId}
-              onChange={(e) => setRequirementId(e.target.value)}
-              disabled={running}
-            >
-              <option value="">Elige un requerimiento…</option>
+        {posSel.panel && <div className="sm:col-span-2">{posSel.panel}</div>}
+        {srcSel.panel && <div className="sm:col-span-2">{srcSel.panel}</div>}
+        {positionId && (
+          <Field
+            label="Requerimiento"
+            className="sm:col-span-2"
+            hint={
+              openReqs.length === 0
+                ? 'El puesto no tiene requerimientos abiertos: el CV queda en la cartera del puesto. Puedes crear uno.'
+                : 'Si no eliges, se asigna al requerimiento abierto más antiguo del puesto.'
+            }
+          >
+            <select className={inputClass} value={reqSel.value} onChange={reqSel.onChange} disabled={reqSel.disabled}>
+              <option value="">{openReqs.length ? 'Asignar automáticamente' : 'Sin requerimiento'}</option>
               {openReqs.map((r) => (
                 <option key={r.id} value={r.id}>
                   {r.title} · {r.filledCount}/{r.vacancies} plazas · {r.urgency} · abierto el {formatDateTime(r.openedAt)}
                 </option>
               ))}
+              {reqSel.newOption}
             </select>
           </Field>
         )}
-        {positionId && openReqs.length === 0 && (
-          <div className="sm:col-span-2">
-            <Notice kind="info">Este puesto no tiene requerimientos abiertos: el CV quedará registrado sin requerimiento.</Notice>
-          </div>
-        )}
+        {reqSel.panel && <div className="sm:col-span-2">{reqSel.panel}</div>}
       </div>
 
       <div className="mt-5">
