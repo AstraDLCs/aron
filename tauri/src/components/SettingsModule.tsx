@@ -318,11 +318,8 @@ export function SettingsModule({ state, onState, refresh }: SettingsModuleProps)
     setAiMsg(null);
     const body: Record<string, unknown> = { aiPreapproveThreshold: threshold, aiEnabled };
     if (models.length > 0) {
-      if (aiModel && !modelIds.has(aiModel)) {
-        setAiMsg({ kind: 'error', text: 'Elige un modelo de la lista de modelos gratuitos.' });
-        return;
-      }
-      if (aiModel) body.aiModel = aiModel;
+      // Solo se envía un modelo elegido de la lista de modelos gratuitos.
+      if (aiModel && modelIds.has(aiModel)) body.aiModel = aiModel;
       body.aiFallbackModels = [fallback1, fallback2].filter((m, i, arr) => m && modelIds.has(m) && m !== aiModel && arr.indexOf(m) === i);
     }
     setSavingAi(true);

@@ -76,7 +76,10 @@ export function UploadCvDialog({ open, state, initialPositionId, initialSourceId
   );
 
   useEffect(() => {
-    setRequirementId(openReqs.length === 1 ? openReqs[0].id : '');
+    setRequirementId((cur) => {
+      if (openReqs.length === 1) return openReqs[0].id;
+      return openReqs.some((r) => r.id === cur) ? cur : '';
+    });
   }, [positionId, openReqs]);
 
   if (!open) return null;
