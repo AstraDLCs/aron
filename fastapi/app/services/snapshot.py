@@ -1,22 +1,24 @@
 """Foto del estado (`GET /api/state`): todo lo que la app necesita, con las claves exactas del contrato.
 
-Cada colección tiene su función `_xxx`. Las tareas posteriores reemplazan las que hoy devuelven `[]`
-(candidatos, bloqueados, criterios, catálogo de pruebas, conversaciones) y los contadores de `_hired_counts`,
-`_source_counts` y `_candidate_counts`.
+Cada colección tiene su función `_xxx`. Las postulaciones y los CVs bloqueados se arman en
+`snapshot_candidates`. Las tareas posteriores reemplazan las que hoy devuelven `[]` (criterios, catálogo de
+pruebas, conversaciones).
 """
 from collections import Counter
 
-from sqlalchemy import select
+from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.models.org import Position, Requirement, Source
+from app.models.people import Candidate
 from app.models.settings import AppSettings
 from app.models.user import User
 from app.schemas.auth import UserOut
 from app.schemas.org import AiQueueOut, JobBoardOut, JobNeedOut, PositionOut, SettingsOut
 from app.services.app_settings import get_app_settings
 from app.services.scoring import compute_kpis
+from app.services.snapshot_candidates import blocked_payload, candidates_payload
 
 CATALOG_VERSION = 4
 
@@ -25,22 +27,39 @@ def _dump(model) -> dict:
     return model.model_dump(mode="json", by_alias=True)
 
 
-# --- contadores que completan las tareas siguientes ------------------------
+# --- contadores calculados a partir de las postulaciones --------------------
 
 
 def hired_counts(db: Session) -> dict[str, int]:
-    """requirement_id -> candidatos 'Contratado'. Sin candidatos todavía: vacío."""
-    return {}
+    """requirement_id -> postulaciones 'Contratado' (plazas cubiertas)."""
+    rows = db.execute(
+        select(Candidate.requirement_id, func.count())
+        .where(Candidate.decision == "Contratado", Candidate.requirement_id.is_not(None))
+        .group_by(Candidate.requirement_id)
+    )
+    return {rid: n for rid, n in rows}
 
 
 def _candidate_counts(db: Session) -> dict[str, int]:
-    """position_id -> nº de postulaciones. Sin candidatos todavía: vacío."""
-    return {}
+    """position_id -> nº de postulaciones."""
+    rows = db.execute(select(Candidate.position_id, func.count()).group_by(Candidate.position_id))
+    return {pid: n for pid, n in rows}
 
 
 def _source_counts(db: Session) -> dict[str, dict[str, int]]:
-    """source_id -> {received, shortlisted, hired}. Sin candidatos todavía: vacío."""
-    return {}
+    """source_id -> {received, shortlisted (Aprobado + Contratado), hired (Contratado)}."""
+    shortlisted = func.count(case((Candidate.decision.in_(("Aprobado", "Contratado")), 1)))
+    hired = func.count(case((Candidate.decision == "Contratado", 1)))
+    rows = db.execute(
+        select(Candidate.source_id, func.count(), shortlisted, hired).group_by(Candidate.source_id)
+    )
+    return {sid: {"received": r, "shortlisted": s, "hired": h} for sid, r, s, h in rows}
+
+
+def _ai_status_counts(db: Session) -> Counter:
+    return Counter({st: n for st, n in db.execute(
+        select(Candidate.ai_status, func.count()).group_by(Candidate.ai_status)
+    )})
 
 
 # --- colecciones -----------------------------------------------------------
@@ -104,10 +123,11 @@ def _settings_block(row: AppSettings) -> dict:
     ))
 
 
-def _ai_queue(row: AppSettings) -> dict:
-    """Los contadores de la cola los completa la Tarea 7; hoy no hay candidatos."""
+def _ai_queue(db: Session, row: AppSettings) -> dict:
+    counts = _ai_status_counts(db)
     return _dump(AiQueueOut(
-        queued=0, processing=0, errors=0, sin_ia=0, paused_until=row.ai_paused_until,
+        queued=counts["En cola"], processing=counts["Procesando"], errors=counts["Error IA"],
+        sin_ia=counts["Sin IA"], paused_until=row.ai_paused_until,
         ai_enabled=row.ai_enabled and bool(get_settings().openrouter_api_key), model=row.ai_model,
     ))
 
@@ -122,7 +142,7 @@ def build_state(db: Session, user: User) -> dict:
     )
     job_needs = _job_needs(db)
     job_boards = _job_boards(db)
-    candidates: list[dict] = []
+    candidates = candidates_payload(db)
     return {
         "catalogVersion": CATALOG_VERSION,
         "companyName": settings_row.company_name,
@@ -130,12 +150,12 @@ def build_state(db: Session, user: User) -> dict:
         "hrChiefTitle": user.job_title,
         "currentUser": _dump(UserOut.model_validate(user)),
         "settings": _settings_block(settings_row),
-        "aiQueue": _ai_queue(settings_row),
+        "aiQueue": _ai_queue(db, settings_row),
         "positions": _positions(db, open_counts),
         "jobNeeds": job_needs,
         "jobBoards": job_boards,
         "candidates": candidates,
-        "blockedCvFiles": [],
+        "blockedCvFiles": blocked_payload(db),
         "recruitmentCriteria": [],
         "testCatalog": [],
         "aiConversations": [],

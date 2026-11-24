@@ -8,6 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from app.audit import log_action
 from app.deps import CurrentUser, client_ip
 from app.models.org import Position, Requirement
+from app.models.people import Candidate, CvFile
 from app.routers._util import DbDep, apply_changes
 from app.schemas.org import PositionCreate, PositionUpdate
 from app.services.slugs import folder_name_for
@@ -117,6 +118,8 @@ def update_position(
             db.rollback()
             raise
     try:
+        if renamed:
+            _rewrite_cv_paths(db, pos.id, old_folder, pos.folder_name)
         if before:
             moved = "parentId" in after
             log_action(
@@ -163,5 +166,13 @@ def delete_position(position_id: str, request: Request, user: CurrentUser, db: D
 
 
 def _has_candidates(db, position_id: str) -> bool:
-    """La Tarea 5 agrega las postulaciones; hasta entonces ningún puesto tiene candidatos."""
-    return False
+    return db.scalar(select(Candidate.id).where(Candidate.position_id == position_id).limit(1)) is not None
+
+
+def _rewrite_cv_paths(db, position_id: str, old_folder: str, new_folder: str) -> None:
+    """Tras mover la carpeta del puesto en disco, actualiza las rutas guardadas de sus CVs (misma transacción)."""
+    prefix = f"{old_folder}/"
+    for cv in db.scalars(select(CvFile).where(CvFile.position_id == position_id)):
+        if cv.stored_path.startswith(prefix):
+            cv.stored_path = f"{new_folder}/{cv.stored_path[len(prefix):]}"
+    db.flush()
