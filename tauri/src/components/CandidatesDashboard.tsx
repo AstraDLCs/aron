@@ -34,6 +34,8 @@ import {
 export const card = 'rounded-xl border border-[#E2E4E8] bg-white';
 export const inputCls =
   'w-full rounded-lg border border-[#D4D7DD] bg-white px-3 py-2 text-sm outline-none focus:border-[#B26337] focus:ring-2 focus:ring-[#B26337]/20';
+export const selectCls =
+  'w-auto min-w-[150px] rounded-lg border border-[#D4D7DD] bg-white px-3 py-2 text-sm outline-none focus:border-[#B26337] focus:ring-2 focus:ring-[#B26337]/20';
 export const labelCls = 'mb-1 block text-[11px] font-semibold uppercase tracking-wide text-[#5C626D]';
 export const btnPrimary =
   'inline-flex items-center justify-center gap-1.5 rounded-lg bg-[#B26337] px-3.5 py-2 text-sm font-semibold text-white hover:bg-[#99522B] disabled:opacity-60 transition-colors';
@@ -593,11 +595,11 @@ export const CandidatesDashboard: React.FC<ModuleProps> = ({ state, onState, nav
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <section className={`${card} p-5`}>
           <h2 className="mb-3 text-sm font-bold text-[#23272E]">Decisión humana</h2>
-          <HorizontalDistributionBars items={funnel} unitLabel="postulaciones" />
+          <HorizontalDistributionBars items={funnel} unitLabel=" postulaciones" />
         </section>
         <section className={`${card} p-5`}>
           <h2 className="mb-3 text-sm font-bold text-[#23272E]">Clasificación de la IA</h2>
-          <HorizontalDistributionBars items={aiFunnel} unitLabel="postulaciones" />
+          <HorizontalDistributionBars items={aiFunnel} unitLabel=" postulaciones" />
         </section>
       </div>
 
@@ -607,7 +609,7 @@ export const CandidatesDashboard: React.FC<ModuleProps> = ({ state, onState, nav
             <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-[#9AA0A8]" />
             <input className={`${inputCls} pl-9`} placeholder="Buscar por nombre, DNI, carrera, especificación…" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
           </div>
-          <select className={`${inputCls} w-auto`} value={filterPosition} onChange={(e) => setFilterPosition(e.target.value)}>
+          <select className={selectCls} value={filterPosition} onChange={(e) => setFilterPosition(e.target.value)}>
             <option value="all">Todos los puestos</option>
             {positions.map((p) => (
               <option key={p.id} value={p.id}>
@@ -615,7 +617,7 @@ export const CandidatesDashboard: React.FC<ModuleProps> = ({ state, onState, nav
               </option>
             ))}
           </select>
-          <select className={`${inputCls} w-auto`} value={filterBoardId} onChange={(e) => setFilterBoardId(e.target.value)}>
+          <select className={selectCls} value={filterBoardId} onChange={(e) => setFilterBoardId(e.target.value)}>
             <option value="all">Todas las fuentes</option>
             {jobBoards.map((b) => (
               <option key={b.id} value={b.id}>
@@ -623,19 +625,19 @@ export const CandidatesDashboard: React.FC<ModuleProps> = ({ state, onState, nav
               </option>
             ))}
           </select>
-          <select className={`${inputCls} w-auto`} value={filterDecision} onChange={(e) => setFilterDecision(e.target.value)}>
+          <select className={selectCls} value={filterDecision} onChange={(e) => setFilterDecision(e.target.value)}>
             <option value="all">Toda decisión</option>
             {['Pendiente de revisión', 'Aprobado', 'Rechazado', 'Contratado'].map((d) => (
               <option key={d}>{d}</option>
             ))}
           </select>
-          <select className={`${inputCls} w-auto`} value={filterAiStatus} onChange={(e) => setFilterAiStatus(e.target.value)}>
+          <select className={selectCls} value={filterAiStatus} onChange={(e) => setFilterAiStatus(e.target.value)}>
             <option value="all">Todo estado IA</option>
             {['En cola', 'Procesando', 'Clasificado', 'Error IA', 'Sin texto', 'Sin IA'].map((d) => (
               <option key={d}>{d}</option>
             ))}
           </select>
-          <select className={`${inputCls} w-auto`} value={filterVerdict} onChange={(e) => setFilterVerdict(e.target.value)}>
+          <select className={selectCls} value={filterVerdict} onChange={(e) => setFilterVerdict(e.target.value)}>
             <option value="all">Todo veredicto</option>
             <option value="Pre-aprobado">Pre-aprobado</option>
             <option value="Pre-denegado">Pre-denegado</option>
