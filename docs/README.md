@@ -120,6 +120,7 @@ Se puede cambiar desde la configuración de la app, pero **solo se aceptan model
 - [ ] Copias de seguridad periódicas de los volúmenes `pgdata` (base de datos) y `rrhh_data` (archivos de CV).
 - [ ] Probar la restauración de una copia al menos una vez.
 - [ ] Baja de cuentas: `docker compose exec api python -m app.cli users deactivate <email>`.
+- [ ] `ALLOW_WIPE=false` cuando la app deje de ser una prueba (desactiva el borrado total con Ctrl+Alt+B).
 
 ## App de escritorio (Tauri)
 
@@ -168,6 +169,23 @@ encuentra en `rebuild/fastapi/downloads/` y muestra su tamaño y su huella SHA-2
 3. Copiarlo a `rebuild/fastapi/downloads/` con el nombre `PulsoLaboral_<versión>_x64_es-ES.msi`, sin espacios.
    Borrar el anterior para no engordar el repositorio.
 4. Hacer commit y push; Dokploy lo publica en el siguiente despliegue.
+
+### Borrado total (solo versión de prueba)
+
+Con la sesión iniciada, **Ctrl + Alt + B** abre un diálogo para borrar todos los datos del servidor. Hay que
+escribir `BORRAR` para confirmar.
+
+- **Se borra, para todos los usuarios:**
+  - organigrama, requerimientos y fuentes;
+  - candidatos, personas y decisiones;
+  - todos los CV, incluidos los archivos del servidor;
+  - pruebas, criterios y conversaciones con la IA.
+- **Se conserva:** las cuentas, la bitácora (el borrado queda registrado con el nombre de quien lo hizo) y la
+  configuración (modelo de IA y umbral).
+- Una casilla permite volver a cargar los datos de demostración, sin candidatos.
+- La carpeta de CV de la PC no se toca. Si se vuelve a sincronizar, los CV se suben de nuevo.
+- El servidor lo permite mientras `ALLOW_WIPE=true`, que es el valor por defecto. Con `false`, la API responde
+  403.
 
 ### Servidor de la API
 

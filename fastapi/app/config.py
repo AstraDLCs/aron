@@ -43,6 +43,9 @@ class Settings(BaseSettings):
 
     company_name_default: str = "Compañía Minera Las Bravas"
 
+    # Borrado total desde la app (Ctrl+Alt+B). Pensado para la versión de prueba: poner en false en producción.
+    allow_wipe: bool = True
+
     @field_validator("jwt_secret")
     @classmethod
     def _check_jwt_secret(cls, v: str) -> str:

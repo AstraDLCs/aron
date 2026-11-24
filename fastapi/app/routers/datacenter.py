@@ -24,6 +24,30 @@ class RestoreBody(BaseModel):
     backup: dict
 
 
+class WipeBody(BaseModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+    confirm: str
+    reload_demo: bool = False
+
+
+@router.post("/wipe")
+def wipe(body: WipeBody, request: Request, user: CurrentUser, db: DbDep):
+    """Borrado total (app de prueba): datos de negocio y CVs. Se desactiva con ALLOW_WIPE=false."""
+    if not get_settings().allow_wipe:
+        raise HTTPException(status_code=403, detail="El borrado total está desactivado en este servidor")
+    if body.confirm != "BORRAR":
+        raise HTTPException(status_code=422, detail="Escribe BORRAR para confirmar")
+    try:
+        result = datacenter.wipe_business_data(db, user, get_storage(), ip=client_ip(request),
+                                               reload_demo=body.reload_demo)
+    except OSError:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="No se pudieron borrar los archivos de CV del servidor") from None
+    db.commit()
+    return {**result, "state": build_state(db, user)}
+
+
 @router.get("/status")
 def get_status(user: CurrentUser, db: DbDep):
     return datacenter.status(db, str(get_settings().rrhh_root))

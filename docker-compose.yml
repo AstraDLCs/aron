@@ -20,6 +20,8 @@ x-app-env: &app-env
   WORKER_RATE_PER_MINUTE: ${WORKER_RATE_PER_MINUTE:-15}
   SERVER_SCAN_INTERVAL_S: ${SERVER_SCAN_INTERVAL_S:-300}
   COMPANY_NAME_DEFAULT: ${COMPANY_NAME_DEFAULT:-Compañía Minera Las Bravas}
+  # Borrado total desde la app (Ctrl+Alt+B). Solo para la versión de prueba; en producción: false.
+  ALLOW_WIPE: ${ALLOW_WIPE:-true}
   # Proxies cuya cabecera X-Forwarded-For se acepta (la usa uvicorn para la IP de la bitácora). Nunca '*':
   # cualquiera podría falsificar su IP. Para registrar la IP real, poner la subred de Traefik (ver README).
   FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-127.0.0.1,::1}

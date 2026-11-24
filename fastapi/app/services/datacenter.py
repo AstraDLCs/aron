@@ -4,8 +4,10 @@ Las tablas se toman del metadata de SQLAlchemy y se ordenan por dependencias, as
 después (conversaciones de IA, pruebas, resultados de Excel) quedan incluidas sin tocar este módulo.
 """
 import importlib
+import shutil
 from datetime import datetime
 from decimal import Decimal
+from pathlib import Path
 
 from sqlalchemy import DateTime, Table, delete, func, insert, select, update
 from sqlalchemy.orm import Session
@@ -159,6 +161,52 @@ def restore_business_data(db: Session, payload: dict, actor: User, storage: Rrhh
         details={"counts": counts, "missingFiles": len(missing)}, ip=ip,
     )
     return {"counts": counts, "missingFiles": missing}
+
+
+KEEP_ON_WIPE = {"app_settings"}  # la configuración (modelo de IA, umbral, empresa) sobrevive al borrado
+
+
+def _clear_folder(root: Path) -> int:
+    """Borra todo lo que hay dentro de `root` (no la carpeta) y devuelve cuántos archivos eliminó."""
+    if not root.is_dir():
+        return 0
+    removed = 0
+    for child in root.iterdir():
+        if child.is_dir() and not child.is_symlink():
+            removed += sum(1 for p in child.rglob("*") if p.is_file())
+            shutil.rmtree(child)
+        else:
+            child.unlink()
+            removed += 1
+    return removed
+
+
+def wipe_business_data(db: Session, actor: User, storage: RrhhStorage, ip: str | None = None,
+                       reload_demo: bool = False) -> dict:
+    """Borra todos los datos de negocio y los archivos de CV, en la transacción de `db` (no hace commit).
+
+    Conserva cuentas, bitácora y configuración. Con `reload_demo`, vuelve a cargar los datos de demostración.
+    """
+    from app.seed import load_demo  # import diferido: seed importa servicios que importan este módulo
+
+    counts: dict[str, int] = {}
+    for table in reversed(business_tables()):
+        if table.name in KEEP_ON_WIPE:
+            continue
+        cols = _self_fk_columns(table)
+        if cols:
+            db.execute(update(table).values({c: None for c in cols}))
+        counts[table_key(table)] = db.execute(delete(table)).rowcount or 0
+    db.flush()
+    deleted_files = _clear_folder(storage.root)
+    db.expire_all()
+    log_action(
+        db, actor=actor, action="datacenter.wipe", entity_type="datacenter",
+        summary=f"Borró todos los datos ({sum(counts.values())} registros y {deleted_files} archivos de CV)",
+        details={"counts": counts, "deletedFiles": deleted_files, "reloadDemo": reload_demo}, ip=ip,
+    )
+    demo = load_demo(db) if reload_demo else None
+    return {"counts": counts, "deletedFiles": deleted_files, "demo": demo}
 
 
 def status(db: Session, storage_path: str) -> dict:

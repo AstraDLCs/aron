@@ -17,6 +17,7 @@ import { OrgChartModule } from './components/org/OrgChartModule';
 import { CvFolderModule } from './components/cv/CvFolderModule';
 import { AuditLogModule } from './components/AuditLogModule';
 import { SettingsModule } from './components/SettingsModule';
+import { WipeDialog } from './components/WipeDialog';
 import { startupSync } from './sync/autoSync';
 import { formatTime } from './utils/labels';
 import type { AppSection, AppState, ModuleProps } from './types';
@@ -45,9 +46,22 @@ function Shell() {
     }
   });
   const syncedRef = useRef(false);
+  const [wipeOpen, setWipeOpen] = useState(false);
 
   useEffect(() => {
     void loadConfig().then((c) => setApiUrl(c.apiBaseUrl));
+  }, []);
+
+  // Ctrl+Alt+B: borrado total (versión de prueba). Se usa la tecla física para no depender del teclado.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.altKey && !e.shiftKey && !e.metaKey && e.code === 'KeyB') {
+        e.preventDefault();
+        setWipeOpen(true);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
   }, []);
 
   useEffect(() => {
@@ -205,6 +219,15 @@ function Shell() {
         {section === 'bitacora' && <AuditLogModule {...props} />}
         {section === 'configuracion' && <SettingsModule {...props} />}
       </main>
+      {wipeOpen && (
+        <WipeDialog
+          onClose={() => setWipeOpen(false)}
+          onDone={(s) => {
+            onState(s);
+            navigate('candidatos');
+          }}
+        />
+      )}
     </div>
   );
 }
