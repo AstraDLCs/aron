@@ -28,6 +28,20 @@ export function normalizeBaseUrl(url: string): string {
   return u.replace(/\/+$/, '');
 }
 
+/** Devuelve un mensaje de error si la URL no es aceptable (remota sin https). */
+export function validateApiUrl(url: string): string | null {
+  const u = normalizeBaseUrl(url);
+  let parsed: URL;
+  try {
+    parsed = new URL(u);
+  } catch {
+    return 'La URL del servidor no es válida';
+  }
+  const local = ['localhost', '127.0.0.1', '[::1]'].includes(parsed.hostname);
+  if (!local && parsed.protocol !== 'https:') return 'Usa https:// para servidores remotos';
+  return null;
+}
+
 export async function loadConfig(): Promise<AppConfig> {
   if (cached) return cached;
   let raw: Partial<AppConfig> = {};
@@ -57,6 +71,8 @@ export async function saveConfig(patch: Partial<AppConfig>): Promise<AppConfig> 
   const current = await loadConfig();
   const next: AppConfig = { ...current, ...patch };
   next.apiBaseUrl = normalizeBaseUrl(next.apiBaseUrl);
+  const invalid = validateApiUrl(next.apiBaseUrl);
+  if (invalid) throw new Error(invalid);
   cached = next;
   try {
     if (isTauri()) {
