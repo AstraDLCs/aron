@@ -68,6 +68,10 @@ El código de la API está en `rebuild/fastapi`. El `docker-compose.yml` está e
 3. En **Domains**, agregar el dominio al servicio `api`, puerto `8000`, con HTTPS (Let's Encrypt). La app de
    escritorio exige `https://` para servidores que no sean `localhost`.
 4. Desplegar. Las migraciones se aplican solas al iniciar la API.
+   - IP en la bitácora: por defecto queda la IP de Traefik, no la del usuario. Para guardar la IP real, poner en
+     `FORWARDED_ALLOW_IPS` la subred de Traefik, que se obtiene con
+     `docker network inspect dokploy-network -f '{{(index .IPAM.Config 0).Subnet}}'`.
+   - **Nunca** poner `*` en esa variable: con eso cualquiera podría registrar una IP falsa.
 5. Datos de demostración (opcional, solo con la base vacía): en la terminal del contenedor `api`, ejecutar
    `python -m app.seed --demo`.
 6. Hacer **Volume Backups** de los volúmenes `pgdata` (base de datos) y `rrhh_data` (archivos de CV). Dokploy solo
