@@ -308,6 +308,11 @@ def read_excel_rows(data: bytes, filename: str) -> tuple[list[dict], str]:
         raise ExcelReadError('No se pudo leer el archivo: usa un .xlsx o .csv válido') from None
 
 
+def _no_formula(v):
+    """Texto que empieza como fórmula de Excel se escribe con un apóstrofo delante para que no se ejecute."""
+    return "'" + v if isinstance(v, str) and v[:1] in ('=', '+', '-', '@', '\t', '\r') else v
+
+
 def build_excel_template(test: dict | None, candidate_name: str | None) -> bytes:
     """Plantilla .xlsx con una hoja `Prueba`: una fila por pregunta, respuesta vacía y escala máxima 5."""
     import io
@@ -321,7 +326,7 @@ def build_excel_template(test: dict | None, candidate_name: str | None) -> bytes
     name = (test or {}).get('name') or DEFAULT_TEMPLATE_NAME
     questions = list((test or {}).get('questions') or []) or DEFAULT_TEMPLATE_QUESTIONS
     for q in questions:
-        ws.append([name, candidate_name or '', q, None, 5])
+        ws.append([_no_formula(name), _no_formula(candidate_name or ''), _no_formula(q), None, 5])
     for col, width in zip('ABCDE', (32, 26, 56, 14, 16)):
         ws.column_dimensions[col].width = width
     out = io.BytesIO()

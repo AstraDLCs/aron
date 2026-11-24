@@ -176,3 +176,14 @@ def test_bad_excel_is_422(client, db, make_user, settings_override, rrhh_root):
     cand, h = _setup(client, db, make_user, settings_override, rrhh_root)
     r = _upload(client, h, b"no es un excel", cand.id, test_name="X")
     assert r.status_code == 422
+
+
+def test_template_neutralizes_formulas(client, db, make_user, settings_override, rrhh_root):
+    cand, h = _setup(client, db, make_user, settings_override, rrhh_root)
+    test = _create_test(client, h, name="=cmd|' /C calc'!A0", questions=['=HYPERLINK("http://x","clic")', "+1+1"])
+    r = client.get(f"/api/tests/excel-template?testId={test['id']}&candidateId={cand.id}", headers=h)
+    ws = load_workbook(io.BytesIO(r.content))["Prueba"]
+    for row in ws.iter_rows(min_row=2):
+        for cell in row[:3]:
+            assert cell.data_type != "f" and not str(cell.value).startswith("=")
+    assert ws["C2"].value == "'=HYPERLINK(\"http://x\",\"clic\")"
