@@ -211,11 +211,11 @@ def test_settings_patch_logged(client, db, make_user):
     _, h = make_user()
     s = client.get("/api/settings", headers=h).json()
     assert s["aiPreapproveThreshold"] == 70 and s["companyName"] == "Compañía Minera Las Bravas"
-    r = client.patch("/api/settings", json={"aiPreapproveThreshold": 75, "aiModel": "m/uno",
-                                            "aiFallbackModels": ["m/dos"]}, headers=h)
+    r = client.patch("/api/settings", json={"aiPreapproveThreshold": 75, "aiModel": "m/uno:free",
+                                            "aiFallbackModels": ["m/dos:free"]}, headers=h)
     assert r.status_code == 200
     assert r.json()["state"]["settings"]["aiPreapproveThreshold"] == 75
-    assert r.json()["state"]["settings"]["aiFallbackModels"] == ["m/dos"]
+    assert r.json()["state"]["settings"]["aiFallbackModels"] == ["m/dos:free"]
     log = _logs(db, "settings.update")[0]
     assert log.entity_type == "settings"
     assert log.details["before"]["aiPreapproveThreshold"] == 70

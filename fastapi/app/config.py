@@ -7,6 +7,11 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _DEV_SECRET = "dev-secret-cambiar-en-produccion"
 
+# Modelos gratuitos (`:free`) de OpenRouter con instrucciones, contexto >= 32k y salida JSON; elegidos el
+# 2026-11-24 con `GET https://openrouter.ai/api/v1/models`. Se usan mientras la configuración no fije otros.
+DEFAULT_AI_MODEL = "google/gemma-4-31b-it:free"
+DEFAULT_AI_FALLBACK_MODELS = ["google/gemma-4-26b-a4b-it:free", "inclusionai/ling-3.2-flash:free"]
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(extra="ignore")

@@ -49,6 +49,7 @@ def criterion_view(c: RecruitmentCriterion) -> dict:
     return {
         "title": c.title, "appliesToDepartment": c.applies_to_department, "weightLabel": c.weight_label,
         "ruleText": c.rule_text, "isCorrection": c.is_correction,
+        "wrongAiAssumption": c.wrong_ai_assumption or "",
     }
 
 

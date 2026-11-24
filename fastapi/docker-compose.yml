@@ -32,14 +32,11 @@ services:
       retries: 20
       start_period: 10s
 
-  # app/worker.py lo crea la Tarea 7; hasta entonces el servicio queda tras un
-  # perfil para que `docker compose up` no lo reinicie en bucle. La Tarea 7
-  # debe quitar la línea `profiles`.
+  # Clasifica los CVs en cola con OpenRouter (sin OPENROUTER_API_KEY solo espera).
   worker:
     build: .
     command: ["python", "-m", "app.worker"]
     env_file: .env
-    profiles: ["worker"]
     restart: unless-stopped
     volumes:
       - ./data/rrhh:/data/rrhh

@@ -18,7 +18,7 @@ from app.models.user import User
 from app.schemas.auth import UserOut
 from app.schemas.criteria import CriterionOut
 from app.schemas.org import AiQueueOut, JobBoardOut, JobNeedOut, PositionOut, SettingsOut
-from app.services.app_settings import get_app_settings
+from app.services.app_settings import effective_ai_model, effective_fallback_models, get_app_settings
 from app.services.scoring import compute_kpis
 from app.services.snapshot_candidates import blocked_payload, candidates_payload
 
@@ -132,7 +132,8 @@ def criteria_payload(db: Session) -> list[dict]:
 
 def _settings_block(row: AppSettings) -> dict:
     return _dump(SettingsOut(
-        company_name=row.company_name, ai_model=row.ai_model, ai_fallback_models=list(row.ai_fallback_models),
+        company_name=row.company_name, ai_model=effective_ai_model(row),
+        ai_fallback_models=effective_fallback_models(row),
         ai_preapprove_threshold=row.ai_preapprove_threshold, ai_enabled=row.ai_enabled,
         ai_configured=bool(get_settings().openrouter_api_key),
     ))
@@ -143,11 +144,16 @@ def _ai_queue(db: Session, row: AppSettings) -> dict:
     return _dump(AiQueueOut(
         queued=counts["En cola"], processing=counts["Procesando"], errors=counts["Error IA"],
         sin_ia=counts["Sin IA"], paused_until=row.ai_paused_until,
-        ai_enabled=row.ai_enabled and bool(get_settings().openrouter_api_key), model=row.ai_model,
+        ai_enabled=row.ai_enabled and bool(get_settings().openrouter_api_key), model=effective_ai_model(row),
     ))
 
 
 # --- API pública -----------------------------------------------------------
+
+
+def ai_queue_payload(db: Session) -> dict:
+    """Contadores de la cola de la IA (`aiQueue` de la foto), también para `GET /api/ai/queue`."""
+    return _ai_queue(db, get_app_settings(db))
 
 
 def build_state(db: Session, user: User) -> dict:
