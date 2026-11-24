@@ -55,7 +55,8 @@ async function rawFetch(path: string, opts: ApiOpts = {}): Promise<Response> {
   const cfg = await loadConfig();
   const token = await getToken();
   const headers: Record<string, string> = { Accept: 'application/json' };
-  if (token) headers.Authorization = `Bearer ${token}`;
+  const isAuthRoute = path.startsWith('/api/auth/login') || path.startsWith('/api/auth/register');
+  if (token && !isAuthRoute) headers.Authorization = `Bearer ${token}`;
   let body: BodyInit | undefined;
   if (opts.form) body = opts.form;
   else if (opts.json !== undefined) {
@@ -76,7 +77,7 @@ async function rawFetch(path: string, opts: ApiOpts = {}): Promise<Response> {
   }
   if (!res.ok) {
     const err = await parseError(res);
-    if (res.status === 401 && token && !path.startsWith('/api/auth/')) fireUnauthorized();
+    if (res.status === 401 && token && !isAuthRoute) fireUnauthorized();
     throw err;
   }
   return res;

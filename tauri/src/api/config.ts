@@ -73,6 +73,7 @@ export async function saveConfig(patch: Partial<AppConfig>): Promise<AppConfig> 
   next.apiBaseUrl = normalizeBaseUrl(next.apiBaseUrl);
   const invalid = validateApiUrl(next.apiBaseUrl);
   if (invalid) throw new Error(invalid);
+  const serverChanged = next.apiBaseUrl !== current.apiBaseUrl;
   cached = next;
   try {
     if (isTauri()) {
@@ -86,6 +87,13 @@ export async function saveConfig(patch: Partial<AppConfig>): Promise<AppConfig> 
     }
   } catch {
     /* sin persistencia */
+  }
+  if (serverChanged) {
+    // El token nunca se envía a otro servidor: al cambiar la URL se cierra la sesión.
+    const session = await import('./session');
+    const had = await session.getToken();
+    await session.setToken(null);
+    if (had) session.fireUnauthorized('Cambiaste el servidor. Ingresa nuevamente.');
   }
   return next;
 }

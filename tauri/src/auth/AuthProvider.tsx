@@ -59,10 +59,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(
     () =>
-      onUnauthorized(() => {
+      onUnauthorized((reason) => {
         void setToken(null);
         setUser(null);
-        setExpiredNotice('Tu sesión venció. Vuelve a ingresar.');
+        setExpiredNotice(reason ?? 'Tu sesión venció. Vuelve a ingresar.');
         setStatus('anonymous');
       }),
     [],

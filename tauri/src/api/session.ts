@@ -34,21 +34,21 @@ export async function setToken(t: string | null): Promise<void> {
 }
 
 let unauthorizedFired = false;
-const listeners = new Set<() => void>();
+const listeners = new Set<(reason?: string) => void>();
 
-export function onUnauthorized(cb: () => void): () => void {
+export function onUnauthorized(cb: (reason?: string) => void): () => void {
   listeners.add(cb);
   return () => {
     listeners.delete(cb);
   };
 }
 
-export function fireUnauthorized() {
+export function fireUnauthorized(reason?: string) {
   if (unauthorizedFired) return;
   unauthorizedFired = true;
   listeners.forEach((l) => {
     try {
-      l();
+      l(reason);
     } catch {
       /* ignore */
     }
