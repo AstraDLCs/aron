@@ -19,14 +19,19 @@ def update_person(person_id: str, body: PersonUpdate, request: Request, user: Cu
     if person is None:
         raise HTTPException(status_code=404, detail="Persona no encontrada")
     values = with_name_parts(body.model_dump(exclude_unset=True), person)
-    changed = apply_person_fields(person, values, "user")
+    owners_before = dict(person.field_sources or {})
+    changed = apply_person_fields(person, values, "user", allow_clear=True)
+    owners_after = person.field_sources or {}
+    # también es una modificación que un campo pase a ser del usuario aunque su valor no cambie
+    claimed = [f for f in owners_after if owners_after[f] != owners_before.get(f) and f not in changed]
     if changed:
         refresh_possible_same(db, person)
         rescore_person(db, person)
+    if changed or claimed:
         log_action(
             db, actor=user, action="person.update", entity_type="person", entity_id=person.id,
             summary=f"Actualizó los datos personales de {person.full_name}",
-            details={"fields": [to_camel(f) for f in changed]},  # sin valores: son datos personales
+            details={"fields": [to_camel(f) for f in [*changed, *claimed]]},  # sin valores: datos personales
             ip=client_ip(request),
         )
     db.commit()

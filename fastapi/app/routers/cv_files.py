@@ -11,7 +11,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
 
 from app.audit import log_action
-from app.constants import MAX_CV_BYTES
+from app.constants import MAX_CV_BYTES, SYSTEM_ACTOR
 from app.deps import CurrentUser, client_ip
 from app.models.org import Position, Source
 from app.models.people import Candidate, CvFile, DeletedCvHash, Person
@@ -117,17 +117,24 @@ def upload_cv(
 def download_cv(cv_id: str, request: Request, user: CurrentUser, db: DbDep, storage: StorageDep):
     cv = _get_cv(db, cv_id)
     path = storage.abs_path(cv.stored_path)
+    position = db.get(Position, cv.position_id)
+    name = _person_name(db, _candidate_of(db, cv), cv.original_name)
     if not path.is_file():
         if not cv.missing:
             cv.missing = True
+            log_action(
+                db, actor=SYSTEM_ACTOR, action="cv.missing_detected", entity_type="cv_file", entity_id=cv.id,
+                summary=f"Falta en el servidor el archivo del CV de {name} ({position.name})",
+                details={"path": cv.stored_path, "detectedOnDownloadBy": user.full_name},
+            )
             db.commit()
         raise HTTPException(status_code=404, detail="El archivo del CV no está en la carpeta del servidor")
+    was_missing = cv.missing
     cv.missing = False
-    position = db.get(Position, cv.position_id)
-    name = _person_name(db, _candidate_of(db, cv), cv.original_name)
     log_action(
         db, actor=user, action="cv.download", entity_type="cv_file", entity_id=cv.id,
-        summary=f"Descargó el CV de {name} ({position.name})", ip=client_ip(request),
+        summary=f"Descargó el CV de {name} ({position.name})",
+        details={"missingCleared": True} if was_missing else None, ip=client_ip(request),
     )
     db.commit()
     headers = {"Content-Disposition": content_disposition(cv.original_name)}
@@ -170,11 +177,18 @@ def move_cv(cv_id: str, body: CvFileUpdate, request: Request, user: CurrentUser,
         cv.missing = True
 
     def _move_back() -> None:
-        if moved:
-            try:
-                storage.move(new_rel, old_pos.folder_name, old_src.folder_name)
-            except Exception:  # noqa: BLE001
-                logger.exception("No se pudo devolver el CV '%s' a su carpeta", new_rel)
+        """La base volvió a `old_rel`: el archivo vuelve a esa carpeta con su nombre original."""
+        if not moved:
+            return
+        try:
+            restored = storage.move(
+                new_rel, old_pos.folder_name, old_src.folder_name, name=PurePosixPath(old_rel).name
+            )
+        except Exception:  # noqa: BLE001
+            logger.exception("No se pudo devolver el CV '%s' a '%s'", new_rel, old_rel)
+            return
+        if restored != old_rel:
+            logger.error("El CV volvió a '%s' pero la base espera '%s'", restored, old_rel)
 
     try:
         cv.position_id, cv.source_id, cv.stored_path = new_pos.id, new_src.id, new_rel
@@ -199,6 +213,7 @@ def move_cv(cv_id: str, body: CvFileUpdate, request: Request, user: CurrentUser,
             details={
                 "before": {"positionId": old_pos.id, "sourceId": old_src.id, "path": old_rel},
                 "after": {"positionId": new_pos.id, "sourceId": new_src.id, "path": new_rel},
+                **({"fileMissing": True} if not moved else {}),
             },
             ip=client_ip(request),
         )

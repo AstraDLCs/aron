@@ -54,12 +54,15 @@ def _is_blank(field: str, value) -> bool:
     return _is_empty(value) or (field == "full_name" and value == UNKNOWN_NAME)
 
 
-def apply_person_fields(person: Person, values: dict, source: FieldSource) -> list[str]:
+def apply_person_fields(
+    person: Person, values: dict, source: FieldSource, *, allow_clear: bool = False
+) -> list[str]:
     """Aplica `values` (claves = campos del modelo) respetando la prioridad user > ia > reglas.
 
     - Una fuente pisa el valor de otra de igual o menor prioridad; nunca uno de mayor prioridad.
-    - Un valor vacío no sobrescribe a uno lleno. Excepción deliberada: el usuario sí puede vaciar un campo
-      (para corregir un dato mal leído); el campo queda como suyo y la IA o las reglas no lo vuelven a llenar.
+    - Un valor vacío se ignora: no sobrescribe a uno lleno ni marca el campo como de esa fuente.
+      Excepción: `allow_clear=True` (solo el `PATCH /api/persons/{id}` explícito, con fuente 'user') vacía
+      el campo a propósito; queda como del usuario y la IA o las reglas no lo vuelven a llenar.
     - El nombre completo nunca queda vacío, y el provisorio "Postulante (Verificar Nombre)" cuenta como vacío.
 
     Devuelve los campos cuyo valor cambió.
@@ -73,7 +76,7 @@ def apply_person_fields(person: Person, values: dict, source: FieldSource) -> li
         if field not in PERSON_FIELDS:
             raise ValueError(f"Campo de persona desconocido: {field}")
         value = _clean(field, raw)
-        if _is_blank(field, value) and (source != "user" or field == "full_name"):
+        if _is_blank(field, value) and not (allow_clear and source == "user" and field != "full_name"):
             continue
         if rank < SOURCE_RANK.get(sources.get(field), 0):
             continue
@@ -92,6 +95,7 @@ def fill_blank_person_fields(person: Person, values: dict, source: FieldSource) 
     Se usa al enlazar un CV a una persona que ya existe: el CV nuevo completa lo que falta, sin importar de
     qué fuente venga el dato actual. Un campo que el usuario vació a propósito no se vuelve a llenar. El
     nombre va en bloque: nombres y apellidos solo se llenan si el nombre completo también estaba vacío.
+    Los valores vacíos se descartan: nunca reclaman un campo.
     """
     sources = person.field_sources or {}
     rank = SOURCE_RANK[source]
@@ -99,6 +103,8 @@ def fill_blank_person_fields(person: Person, values: dict, source: FieldSource) 
     for field, raw in values.items():
         if field not in PERSON_FIELDS:
             raise ValueError(f"Campo de persona desconocido: {field}")
+        if _is_blank(field, _clean(field, raw)):
+            continue
         target = "full_name" if field in NAME_FIELDS else field
         if not _is_blank(target, getattr(person, target)):
             continue

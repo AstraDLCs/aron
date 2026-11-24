@@ -337,6 +337,35 @@ def test_move_cv_between_positions(client, db, make_user, rrhh_root, settings_ov
     assert client.patch(f"/api/cv-files/{res2['cvFileId']}", json={"positionId": "nope"}, headers=h).status_code == 422
 
 
+def test_failed_move_after_suffixed_name_restores_original(client, db, make_user, rrhh_root, monkeypatch):
+    """Si el commit falla tras mover a un nombre con sufijo, el archivo vuelve con su nombre original."""
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+
+    _, h = make_user()
+    (p1, p2), src = _org(client, h, n_positions=2)
+    juan, rosa = make_cv_pdf(**JUAN), make_cv_pdf(**ROSA)
+    res = upload_cv(client, h, juan, "cv.pdf", p1["id"], src["id"]).json()["result"]
+    assert upload_cv(client, h, rosa, "cv.pdf", p2["id"], src["id"]).status_code == 201  # ocupa p2/…/cv.pdf
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("fallo simulado")
+
+    monkeypatch.setattr(db, "commit", boom)
+    with TestClient(app, raise_server_exceptions=False) as c:
+        r = c.patch(f"/api/cv-files/{res['cvFileId']}", json={"positionId": p2["id"]}, headers=h)
+    assert r.status_code == 500
+    monkeypatch.undo()
+
+    original = rrhh_root / "operador-de-planta" / "portal-minero-peru" / "cv.pdf"
+    other = rrhh_root / "supervisor-hsec" / "portal-minero-peru" / "cv.pdf"
+    assert original.read_bytes() == juan and other.read_bytes() == rosa
+    assert _files(rrhh_root) == sorted([original, other])  # no queda el cv-<sha8>.pdf del intento
+    db.expire_all()
+    assert db.get(CvFile, res["cvFileId"]).stored_path == "operador-de-planta/portal-minero-peru/cv.pdf"
+
+
 def test_unsupported_and_too_large(client, make_user, rrhh_root):
     _, h = make_user()
     (pos,), src = _org(client, h)
@@ -426,10 +455,23 @@ def test_unicode_filename_roundtrip(client, db, make_user, rrhh_root):
     assert len(_logs(db, "cv.download")) == 1
     assert client.get("/api/cv-files/nope/download", headers=h).status_code == 404
 
-    (rrhh_root / "operador-de-planta" / "portal-minero-peru" / name).unlink()
+    path = rrhh_root / "operador-de-planta" / "portal-minero-peru" / name
+    path.unlink()
     r = client.get(f"/api/cv-files/{res['cvFileId']}/download", headers=h)
     assert r.status_code == 404
     assert candidate_in(client.get("/api/state", headers=h).json(), res["candidateId"])["cvMissing"] is True
+    missing = _logs(db, "cv.missing_detected")
+    assert len(missing) == 1 and missing[0].user_name == "Sistema"
+    assert missing[0].summary == (
+        "Falta en el servidor el archivo del CV de José Antonio Ñuñez Paredes (Operador de Planta)"
+    )
+    assert client.get(f"/api/cv-files/{res['cvFileId']}/download", headers=h).status_code == 404
+    assert len(_logs(db, "cv.missing_detected")) == 1  # ya estaba marcado: no se repite
+
+    path.write_bytes(data)  # el archivo vuelve: la descarga quita la marca y lo deja en la bitácora
+    assert client.get(f"/api/cv-files/{res['cvFileId']}/download", headers=h).status_code == 200
+    assert candidate_in(client.get("/api/state", headers=h).json(), res["candidateId"])["cvMissing"] is False
+    assert _logs(db, "cv.download")[-1].details == {"missingCleared": True}
 
 
 def test_manual_candidate(client, db, make_user, rrhh_root, settings_override):

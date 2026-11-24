@@ -127,18 +127,25 @@ class RrhhStorage:
             tmp.unlink(missing_ok=True)
         return f"{rel_dir}/{target.name}"
 
-    def move(self, rel: str, position_folder: str, source_folder: str, *, avoid: Collection[str] = ()) -> str:
-        """Mueve el archivo a otra carpeta sin pisar ninguno; si el nombre está ocupado, usa un sufijo."""
+    def move(
+        self, rel: str, position_folder: str, source_folder: str, *, avoid: Collection[str] = (),
+        name: str | None = None,
+    ) -> str:
+        """Mueve el archivo a otra carpeta sin pisar ninguno; si el nombre está ocupado, usa un sufijo.
+
+        `name` pide un nombre de destino distinto del actual (p. ej. el original, al deshacer un movimiento).
+        """
         src = self.abs_path(rel)
         folder, rel_dir = self._folder(position_folder, source_folder)
-        if src.parent == folder:
+        name = self.safe_filename(name) if name else src.name
+        if src.parent == folder and src.name == name:
             return rel
         folder.mkdir(parents=True, exist_ok=True)
 
         def digest() -> str:
             return hashlib.sha256(src.read_bytes()).hexdigest()
 
-        target = self._claim(src, folder, src.name, digest, self._names_in(rel_dir, avoid))
+        target = self._claim(src, folder, name, digest, self._names_in(rel_dir, avoid))
         return f"{rel_dir}/{target.name}"
 
     def delete(self, rel: str) -> None:

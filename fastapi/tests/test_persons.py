@@ -69,6 +69,58 @@ def test_link_fills_blanks_without_overwriting(client, db, make_user, rrhh_root)
     assert len(link) == 1 and link[0].details == {"reason": "mismo documento"}
 
 
+def test_manual_entry_does_not_lock_blank_fields(client, db, make_user, rrhh_root):
+    """Los campos que el alta manual deja vacíos no quedan como del usuario: un CV posterior los llena."""
+    _, h = make_user()
+    p1, p2, src = _org(client, h)
+    r = client.post("/api/candidates", json={
+        "fullName": JUAN["full_name"], "career": "Ingeniería de Minas", "documentId": JUAN["dni"],
+        "positionId": p1["id"], "sourceId": src["id"],
+    }, headers=h)
+    assert r.status_code == 201, r.text
+    person = db.get(Person, candidate_in(r.json()["state"], r.json()["candidateId"])["personId"])
+    assert set(person.field_sources) == {"full_name", "first_names", "last_names", "career", "document_id"}
+    assert set(person.field_sources.values()) == {"user"}
+
+    b = upload_cv(client, h, make_cv_pdf(**JUAN), "cv.pdf", p2["id"], src["id"]).json()["result"]
+    assert b["personId"] == person.id
+    db.refresh(person)
+    assert person.email == JUAN["email"] and person.phone == JUAN["phone"]
+    assert person.origin_location == "Arequipa, Perú"
+    assert person.career == "Ingeniería de Minas"  # lo escrito a mano no se pisa
+    assert person.field_sources["email"] == "reglas"
+
+
+def test_patch_clear_keeps_field_cleared_and_ownership_is_audited(client, db, make_user, rrhh_root):
+    _, h = make_user()
+    p1, p2, src = _org(client, h)
+    a = upload_cv(client, h, make_cv_pdf(**JUAN), "a.pdf", p1["id"], src["id"]).json()["result"]
+    pid = a["personId"]
+
+    r = client.patch(f"/api/persons/{pid}", json={"email": ""}, headers=h)
+    assert r.status_code == 200
+    assert candidate_in(r.json()["state"], a["candidateId"])["email"] == ""
+    assert _logs(db, "person.update")[-1].details == {"fields": ["email"]}
+
+    other = make_cv_pdf(JUAN["full_name"], JUAN["dni"], JUAN["email"], JUAN["phone"], body=MINAS_BODY)
+    b = upload_cv(client, h, other, "b.pdf", p2["id"], src["id"]).json()["result"]
+    assert b["personId"] == pid
+    person = db.get(Person, pid)
+    db.refresh(person)
+    assert person.email == "" and person.field_sources["email"] == "user"  # el vaciado se respeta
+
+    # confirmar un valor sin cambiarlo lo hace del usuario: también queda en la bitácora
+    assert person.field_sources["career"] == "reglas"
+    r = client.patch(f"/api/persons/{pid}", json={"career": person.career}, headers=h)
+    assert r.status_code == 200
+    db.refresh(person)
+    assert person.field_sources["career"] == "user"
+    logs = _logs(db, "person.update")
+    assert len(logs) == 2 and logs[-1].details == {"fields": ["career"]}
+    client.patch(f"/api/persons/{pid}", json={"career": person.career}, headers=h)
+    assert len(_logs(db, "person.update")) == 2  # sin cambios: sin fila
+
+
 def test_person_field_precedence(client, db, make_user, rrhh_root):
     _, h = make_user()
     p1, p2, src = _org(client, h)
