@@ -18,6 +18,7 @@ import { CvFolderModule } from './components/cv/CvFolderModule';
 import { AuditLogModule } from './components/AuditLogModule';
 import { SettingsModule } from './components/SettingsModule';
 import { WipeDialog } from './components/WipeDialog';
+import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { startupSync } from './sync/autoSync';
 import { formatTime } from './utils/labels';
 import type { AppSection, AppState, ModuleProps } from './types';
@@ -28,6 +29,18 @@ const ProcessesKPIModule = (Processes as any).ProcessesKPIModule as React.Compon
 const ReportsExportModule = (Reports as any).ReportsExportModule as React.ComponentType<any>;
 
 const POLL_MS = 30_000;
+
+const SECTION_NAMES: Partial<Record<AppSection, string>> = {
+  candidatos: 'Candidatos',
+  organigrama: 'Organigrama',
+  requerimientos: 'Requerimientos',
+  carpeta: 'Carpeta de CVs',
+  psicologicas: 'Pruebas',
+  procesos: 'Procesos KPI',
+  reportes: 'Reportes',
+  bitacora: 'Bitácora',
+  configuracion: 'Configuración',
+};
 
 function Shell() {
   const { user, logout } = useAuth();
@@ -207,6 +220,7 @@ function Shell() {
       </div>
 
       <main className="mx-auto w-full min-w-0 max-w-[1400px] px-6 py-6">
+        <ErrorBoundary key={section} area={SECTION_NAMES[section] ?? section}>
         {section === 'candidatos' && <CandidatesDashboard {...props} />}
         {section === 'organigrama' && <OrgChartModule {...props} />}
         {section === 'requerimientos' && (
@@ -218,6 +232,7 @@ function Shell() {
         {section === 'reportes' && <ReportsExportModule {...props} />}
         {section === 'bitacora' && <AuditLogModule {...props} />}
         {section === 'configuracion' && <SettingsModule {...props} />}
+        </ErrorBoundary>
       </main>
       {wipeOpen && (
         <WipeDialog

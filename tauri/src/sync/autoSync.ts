@@ -1,7 +1,7 @@
 import type { AppState } from '../types';
 import { apiFetch } from '../api/client';
 import { loadConfig } from '../api/config';
-import { runSync, summaryLine, type SyncSummary } from './runSync';
+import { normalizeSyncSummary, runSync, summaryLine, type SyncSummary } from './runSync';
 import { toast } from '../components/common/Toast';
 import { showSyncSummary } from './showSummary';
 
@@ -19,7 +19,7 @@ export function saveLastSummary(s: SyncSummary): void {
 export function loadLastSummary(): SyncSummary | null {
   try {
     const raw = localStorage.getItem(LAST_SYNC_KEY);
-    return raw ? (JSON.parse(raw) as SyncSummary) : null;
+    return raw ? normalizeSyncSummary(JSON.parse(raw) as Partial<SyncSummary>) : null;
   } catch {
     return null;
   }

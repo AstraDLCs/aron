@@ -1,13 +1,14 @@
 {
   "name": "pulso-laboral-desktop",
   "private": true,
-  "version": "0.2.2",
+  "version": "0.2.3",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "test": "vitest run",
+    "smoke": "node scripts/smoke-ui.mjs",
     "tauri": "tauri"
   },
   "dependencies": {

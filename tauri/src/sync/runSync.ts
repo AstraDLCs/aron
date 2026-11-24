@@ -65,6 +65,32 @@ export function apiErrorCode(e: unknown): string | undefined {
   return d && typeof d === 'object' ? d.code : undefined;
 }
 
+/**
+ * Completa un resumen guardado por una versión anterior (localStorage) con los campos que le falten.
+ * Sin esto, un campo nuevo (p. ej. `createdPositions`) rompe la pestaña Carpeta de CVs.
+ */
+export function normalizeSyncSummary(raw: Partial<SyncSummary> | null | undefined): SyncSummary | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const list = <T,>(v: T[] | undefined): T[] => (Array.isArray(v) ? v : []);
+  return {
+    root: raw.root ?? '',
+    origin: raw.origin === 'importacion' ? 'importacion' : 'sync_local',
+    scanned: raw.scanned ?? 0,
+    uploaded: raw.uploaded ?? 0,
+    duplicates: raw.duplicates ?? 0,
+    deletedBefore: raw.deletedBefore ?? 0,
+    unmatchedFolders: list(raw.unmatchedFolders),
+    createdPositions: list(raw.createdPositions),
+    createdSources: list(raw.createdSources),
+    skipped: list(raw.skipped),
+    errors: list(raw.errors),
+    uploadedFiles: list(raw.uploadedFiles),
+    duplicateFiles: list(raw.duplicateFiles),
+    deletedBeforeFiles: list(raw.deletedBeforeFiles),
+    finishedAt: raw.finishedAt ?? new Date(0).toISOString(),
+  };
+}
+
 /** «agente-de-seguridad-patrimonial» → «Agente de seguridad patrimonial». */
 export function humanizeFolder(folder: string): string {
   const s = folder.replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim();
@@ -240,11 +266,11 @@ export async function runSync(opts: {
 }
 
 export function summaryLine(s: SyncSummary): string {
-  const parts = [`${s.uploaded} nuevos`, `${s.duplicates} repetidos`];
-  if (s.createdPositions.length) parts.push(`${s.createdPositions.length} puestos creados`);
-  if (s.createdSources.length) parts.push(`${s.createdSources.length} fuentes creadas`);
+  const parts = [`${s.uploaded ?? 0} nuevos`, `${s.duplicates ?? 0} repetidos`];
+  if (s.createdPositions?.length) parts.push(`${s.createdPositions.length} puestos creados`);
+  if (s.createdSources?.length) parts.push(`${s.createdSources.length} fuentes creadas`);
   if (s.deletedBefore) parts.push(`${s.deletedBefore} eliminados antes`);
-  if (s.unmatchedFolders.length) parts.push(`${s.unmatchedFolders.length} carpetas sin coincidencia`);
-  if (s.errors.length) parts.push(`${s.errors.length} con error`);
+  if (s.unmatchedFolders?.length) parts.push(`${s.unmatchedFolders.length} carpetas sin coincidencia`);
+  if (s.errors?.length) parts.push(`${s.errors.length} con error`);
   return parts.join(', ');
 }

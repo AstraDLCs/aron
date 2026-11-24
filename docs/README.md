@@ -142,6 +142,18 @@ npm run tauri dev
 En desarrollo (`npm run tauri dev`) la app usa la API local, `http://localhost:8000`, y el servidor se puede
 cambiar en el diálogo «Servidor». El instalador (`.msi`) se conecta siempre al servidor oficial (ver más abajo).
 
+### Prueba de humo de la interfaz (antes de publicar)
+
+Recorre la app real en Edge (sin ventana): inicia sesión, abre las 9 pestañas y los diálogos con «+ Nuevo…», y
+falla si alguna pantalla queda en blanco o hay un error de JavaScript. Guarda una captura por paso.
+
+```
+npx vite --port 1420          # en otra terminal; la API local debe estar encendida
+npm run smoke                 # SEED_OLD_SUMMARY=1 simula datos guardados por una versión anterior
+```
+
+Variables: `SMOKE_EMAIL`, `SMOKE_PASSWORD` (por defecto la cuenta demo), `OUT_DIR` (capturas), `BROWSER`.
+
 ### Generar el instalador (.msi)
 
 ```
