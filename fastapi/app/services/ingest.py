@@ -6,7 +6,8 @@
 `file_written=True`, quien llama debe borrar el archivo con `discard_written_file`.
 
 La fuente de verdad contra repetidos es la restricción UNIQUE(sha256, position_id): si dos subidas compiten,
-la que pierde recibe `duplicate` y borra el archivo que escribió.
+la que pierde recibe `duplicate` y borra el archivo que escribió. El almacenamiento nunca pisa un archivo
+(toma el nombre de forma exclusiva), así que el archivo que se borra siempre es el que creó esta llamada.
 """
 import hashlib
 import logging
@@ -40,6 +41,8 @@ MSG_TOO_LARGE = "El archivo supera 15 MB"
 MSG_BAD_REQUIREMENT = "El requerimiento no está abierto o no corresponde al puesto"
 MSG_NO_POSITION = "El puesto no existe"
 MSG_NO_SOURCE = "La fuente no existe"
+
+INSERT_ATTEMPTS = 3
 
 MIME_BY_EXTENSION = {
     ".pdf": "application/pdf",
@@ -124,6 +127,12 @@ def find_blocked(db: Session, sha256: str, position_id: str) -> DeletedCvHash | 
     return db.scalar(
         select(DeletedCvHash).where(DeletedCvHash.sha256 == sha256, DeletedCvHash.position_id == position_id)
     )
+
+
+def registered_paths(db: Session, position_folder: str, source_folder: str) -> set[str]:
+    """Rutas ya registradas en esa carpeta (incluye CVs marcados como faltantes): no se reutilizan."""
+    prefix = f"{position_folder}/{source_folder}/"
+    return set(db.scalars(select(CvFile.stored_path).where(CvFile.stored_path.startswith(prefix, autoescape=True))))
 
 
 def find_duplicate(db: Session, sha256: str, position_id: str) -> CvFile | None:
@@ -275,9 +284,14 @@ def ingest_cv(
         return _reject_duplicate(db, existing, original_name, position, actor, ip)
 
     # 5. guardar el archivo (o usar el que ya está en la carpeta del servidor)
+    taken = registered_paths(db, position.folder_name, source.folder_name)
+
+    def save() -> str:
+        return storage.save_bytes(position.folder_name, source.folder_name, original_name, data, sha256, avoid=taken)
+
     if existing_rel_path is None:
-        rel = storage.save_bytes(position.folder_name, source.folder_name, original_name, data, sha256)
-        written = True
+        rel = save()
+        written = True  # `rel` lo creó esta llamada: es el único archivo que se puede borrar
     else:
         storage.abs_path(existing_rel_path)  # ValueError si sale de la raíz
         rel, written = existing_rel_path, False
@@ -286,24 +300,31 @@ def ingest_cv(
         # 6. texto (sin caracteres que PostgreSQL no acepta, como surrogates sueltos)
         text, text_status = extract_text(data, original_name)
         text = text.encode("utf-8", "replace").decode("utf-8")
-        cv = CvFile(
-            sha256=sha256, position_id=position.id, source_id=source.id, original_name=original_name,
-            stored_path=rel, mime=MIME_BY_EXTENSION[extension], size=len(data), origin=origin, text=text,
-            text_status=text_status, missing=False, uploaded_by_id=actor_id(actor),
-            uploaded_by_name=actor_name(actor),
-        )
-        try:
-            with db.begin_nested():  # si pierde la carrera, solo se deshace este INSERT
-                db.add(cv)
-                db.flush()
-        except IntegrityError:
-            winner = find_duplicate(db, sha256, position.id)
-            if winner is None:
-                raise  # otra restricción: no es un repetido
-            if written and winner.stored_path != rel:
-                _safe_delete(storage, rel)
-            written = False
-            return _reject_duplicate(db, winner, original_name, position, actor, ip)
+        for attempt in range(1, INSERT_ATTEMPTS + 1):
+            cv = CvFile(
+                sha256=sha256, position_id=position.id, source_id=source.id, original_name=original_name,
+                stored_path=rel, mime=MIME_BY_EXTENSION[extension], size=len(data), origin=origin, text=text,
+                text_status=text_status, missing=False, uploaded_by_id=actor_id(actor),
+                uploaded_by_name=actor_name(actor),
+            )
+            try:
+                with db.begin_nested():  # si choca, solo se deshace este INSERT
+                    db.add(cv)
+                    db.flush()
+                break
+            except IntegrityError:
+                winner = find_duplicate(db, sha256, position.id)
+                if winner is not None:  # perdió la carrera contra el mismo CV: es un repetido
+                    if written:
+                        _safe_delete(storage, rel)
+                        written = False
+                    return _reject_duplicate(db, winner, original_name, position, actor, ip)
+                if not written or attempt == INSERT_ATTEMPTS:
+                    raise
+                # la ruta ya estaba registrada (p. ej. un CV faltante con ese nombre): otro nombre, sin pisar nada
+                taken.add(rel)
+                previous, rel = rel, save()
+                _safe_delete(storage, previous)
 
         # 7. lector de CV
         positions = [position_view(p) for p in db.scalars(select(Position))]

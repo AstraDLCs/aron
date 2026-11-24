@@ -179,6 +179,39 @@ def test_duplicate_race_integrity_error_maps_to_duplicate(client, db, make_user,
     assert len(_logs(db, "cv.duplicate_rejected")) == 1
 
 
+def test_missing_file_path_is_not_reused(client, db, make_user, rrhh_root):
+    """Un CV registrado cuyo archivo falta conserva su ruta: otro CV con el mismo nombre usa un sufijo."""
+    _, h = make_user()
+    (pos,), src = _org(client, h)
+    a = upload_cv(client, h, make_cv_pdf(**JUAN), "cv.pdf", pos["id"], src["id"]).json()["result"]
+    folder = rrhh_root / "operador-de-planta" / "portal-minero-peru"
+    (folder / "cv.pdf").unlink()
+    rosa = make_cv_pdf(**ROSA)
+    r = upload_cv(client, h, rosa, "cv.pdf", pos["id"], src["id"])
+    assert r.status_code == 201, r.text
+    b = candidate_in(r.json()["state"], r.json()["result"]["candidateId"])
+    assert b["cvPath"] == f"operador-de-planta/portal-minero-peru/cv-{hashlib.sha256(rosa).hexdigest()[:8]}.pdf"
+    assert db.get(CvFile, a["cvFileId"]).stored_path == "operador-de-planta/portal-minero-peru/cv.pdf"
+    assert _files(rrhh_root) == [rrhh_root / b["cvPath"]]
+
+
+def test_stored_path_conflict_retries_with_new_name(client, db, make_user, rrhh_root, monkeypatch):
+    """Si la ruta elegida ya estaba registrada, se reintenta con otro nombre y no se borra nada ajeno."""
+    _, h = make_user()
+    (pos,), src = _org(client, h)
+    a = upload_cv(client, h, make_cv_pdf(**JUAN), "cv.pdf", pos["id"], src["id"]).json()["result"]
+    (rrhh_root / "operador-de-planta" / "portal-minero-peru" / "cv.pdf").unlink()
+    monkeypatch.setattr(ingest, "registered_paths", lambda *args: set())  # no sabe de la ruta registrada
+    rosa = make_cv_pdf(**ROSA)
+    r = upload_cv(client, h, rosa, "cv.pdf", pos["id"], src["id"])
+    assert r.status_code == 201, r.text
+    b = candidate_in(r.json()["state"], r.json()["result"]["candidateId"])
+    assert b["cvPath"].endswith(f"/cv-{hashlib.sha256(rosa).hexdigest()[:8]}.pdf")
+    assert (rrhh_root / b["cvPath"]).read_bytes() == rosa
+    assert _files(rrhh_root) == [rrhh_root / b["cvPath"]]  # el primer intento (cv.pdf) era propio y se quitó
+    assert db.get(CvFile, a["cvFileId"]).stored_path == "operador-de-planta/portal-minero-peru/cv.pdf"
+
+
 def test_same_file_other_position_new_application_same_person(client, db, make_user, rrhh_root):
     _, h = make_user()
     (p1, p2), src = _org(client, h, n_positions=2)

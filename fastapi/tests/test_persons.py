@@ -48,6 +48,27 @@ def test_link_by_document_or_email(client, db, make_user, rrhh_root):
     assert len(db.scalars(select(Person)).all()) == 2
 
 
+def test_link_fills_blanks_without_overwriting(client, db, make_user, rrhh_root):
+    _, h = make_user()
+    p1, p2, src = _org(client, h)
+    cv1 = make_cv_pdf(JUAN["full_name"], JUAN["dni"], "", JUAN["phone"], city="Arequipa")
+    a = upload_cv(client, h, cv1, "cv1.pdf", p1["id"], src["id"]).json()["result"]
+    person = db.get(Person, a["personId"])
+    assert person.origin_location == "Arequipa, Perú" and person.email == ""
+    career = person.career
+
+    cv2 = make_cv_pdf("Juan C. Quispe", JUAN["dni"], JUAN["email"], "912 000 111", body=MINAS_BODY, city="Lima")
+    b = upload_cv(client, h, cv2, "cv2.pdf", p2["id"], src["id"]).json()["result"]
+    assert b["personId"] == a["personId"]
+    db.refresh(person)
+    assert person.origin_location == "Arequipa, Perú"  # no se pisa
+    assert person.full_name == JUAN["full_name"] and person.phone == JUAN["phone"] and person.career == career
+    assert person.email == JUAN["email"]  # vacío en el CV 1: se llena
+    assert person.field_sources["email"] == "reglas"
+    link = _logs(db, "person.link")
+    assert len(link) == 1 and link[0].details == {"reason": "mismo documento"}
+
+
 def test_person_field_precedence(client, db, make_user, rrhh_root):
     _, h = make_user()
     p1, p2, src = _org(client, h)

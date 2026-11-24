@@ -2,13 +2,49 @@
 import hashlib
 import os
 import re
-import shutil
-from collections.abc import Iterator
-from pathlib import Path
+import uuid
+from collections.abc import Callable, Collection, Iterator
+from pathlib import Path, PurePosixPath
 
 from app.config import get_settings
 
 FILENAME_MAX = 120
+MAX_NAME_ATTEMPTS = 1000
+
+
+def _candidate_names(name: str, digest: Callable[[], str]) -> Iterator[str]:
+    """`name`, luego `name-<sha8>`, `name-<sha8>-2`, `-3`, … (el hash se calcula solo si hace falta)."""
+    yield name
+    stem, dot, ext = name.rpartition(".")
+    if not (dot and stem):
+        stem, ext = name, ""
+    ext = f".{ext}" if ext else ""
+    base = f"{stem}-{digest()[:8]}"
+    yield f"{base}{ext}"
+    for n in range(2, MAX_NAME_ATTEMPTS):
+        yield f"{base}-{n}{ext}"
+
+
+def _place_exclusive(src: Path, target: Path) -> None:
+    """Lleva `src` a `target` sin pisar nada: FileExistsError si `target` ya existe.
+
+    Con un enlace duro el nombre se toma de forma atómica. Si el sistema de archivos no admite enlaces
+    duros, se reserva el nombre con O_CREAT|O_EXCL y luego se reemplaza esa reserva (que es nuestra).
+    """
+    try:
+        os.link(src, target)
+    except FileExistsError:
+        raise
+    except OSError:
+        fd = os.open(target, os.O_CREAT | os.O_EXCL | os.O_WRONLY)  # FileExistsError si ya está tomado
+        os.close(fd)
+        try:
+            os.replace(src, target)
+        except BaseException:
+            target.unlink(missing_ok=True)  # la reserva vacía era nuestra
+            raise
+        return
+    os.unlink(src)
 _CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f]")
 
 
@@ -54,31 +90,55 @@ class RrhhStorage:
 
     # --- operaciones -----------------------------------------------------
 
-    def save_bytes(self, position_folder: str, source_folder: str, filename: str, data: bytes, sha256: str) -> str:
+    def _claim(self, src: Path, folder: Path, name: str, digest: Callable[[], str], avoid: set[str]) -> Path:
+        """Pone `src` en la carpeta con el primer nombre libre (en disco y fuera de `avoid`)."""
+        for candidate in _candidate_names(name, digest):
+            if candidate in avoid:
+                continue
+            target = folder / candidate
+            try:
+                _place_exclusive(src, target)
+            except FileExistsError:
+                continue
+            return target
+        raise FileExistsError(f"No hay un nombre libre para '{name}'")
+
+    @staticmethod
+    def _names_in(rel_dir: str, avoid: Collection[str]) -> set[str]:
+        return {PurePosixPath(r).name for r in avoid if PurePosixPath(r).parent.as_posix() == rel_dir}
+
+    def save_bytes(
+        self, position_folder: str, source_folder: str, filename: str, data: bytes, sha256: str,
+        *, avoid: Collection[str] = (),
+    ) -> str:
+        """Guarda `data` sin pisar ningún archivo y devuelve la ruta relativa que realmente quedó.
+
+        Si el nombre está ocupado (o figura en `avoid`, rutas relativas ya registradas en la base), usa
+        `-<sha8>`, `-<sha8>-2`, … El archivo temporal empieza con punto: la revisión de la carpeta lo ignora.
+        """
         folder, rel_dir = self._folder(position_folder, source_folder)
         folder.mkdir(parents=True, exist_ok=True)
         name = self.safe_filename(filename)
-        if (folder / name).exists():
-            stem, dot, ext = name.rpartition(".")
-            name = f"{stem}-{sha256[:8]}.{ext}" if dot and stem else f"{name}-{sha256[:8]}"
-        target = folder / name
-        tmp = folder / f".{name}.part"
+        tmp = folder / f".{uuid.uuid4().hex}.part"  # propio de esta escritura: dos subidas no lo comparten
         tmp.write_bytes(data)
-        os.replace(tmp, target)
-        return f"{rel_dir}/{name}"
+        try:
+            target = self._claim(tmp, folder, name, lambda: sha256, self._names_in(rel_dir, avoid))
+        finally:
+            tmp.unlink(missing_ok=True)
+        return f"{rel_dir}/{target.name}"
 
-    def move(self, rel: str, position_folder: str, source_folder: str) -> str:
+    def move(self, rel: str, position_folder: str, source_folder: str, *, avoid: Collection[str] = ()) -> str:
+        """Mueve el archivo a otra carpeta sin pisar ninguno; si el nombre está ocupado, usa un sufijo."""
         src = self.abs_path(rel)
         folder, rel_dir = self._folder(position_folder, source_folder)
         if src.parent == folder:
             return rel
         folder.mkdir(parents=True, exist_ok=True)
-        target = folder / src.name
-        if target.exists():
-            digest = hashlib.sha256(src.read_bytes()).hexdigest()[:8]
-            stem, dot, ext = src.name.rpartition(".")
-            target = folder / (f"{stem}-{digest}.{ext}" if dot and stem else f"{src.name}-{digest}")
-        shutil.move(str(src), str(target))
+
+        def digest() -> str:
+            return hashlib.sha256(src.read_bytes()).hexdigest()
+
+        target = self._claim(src, folder, src.name, digest, self._names_in(rel_dir, avoid))
         return f"{rel_dir}/{target.name}"
 
     def delete(self, rel: str) -> None:

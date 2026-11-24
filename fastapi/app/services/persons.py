@@ -86,6 +86,28 @@ def apply_person_fields(person: Person, values: dict, source: FieldSource) -> li
     return changed
 
 
+def fill_blank_person_fields(person: Person, values: dict, source: FieldSource) -> list[str]:
+    """Como `apply_person_fields`, pero solo llena campos vacíos: nunca reemplaza un valor existente.
+
+    Se usa al enlazar un CV a una persona que ya existe: el CV nuevo completa lo que falta, sin importar de
+    qué fuente venga el dato actual. Un campo que el usuario vació a propósito no se vuelve a llenar. El
+    nombre va en bloque: nombres y apellidos solo se llenan si el nombre completo también estaba vacío.
+    """
+    sources = person.field_sources or {}
+    rank = SOURCE_RANK[source]
+    blanks = {}
+    for field, raw in values.items():
+        if field not in PERSON_FIELDS:
+            raise ValueError(f"Campo de persona desconocido: {field}")
+        target = "full_name" if field in NAME_FIELDS else field
+        if not _is_blank(target, getattr(person, target)):
+            continue
+        if rank < SOURCE_RANK.get(sources.get(field), 0):
+            continue
+        blanks[field] = raw
+    return apply_person_fields(person, blanks, source)
+
+
 def with_name_parts(values: dict, person: Person | None = None) -> dict:
     """Mantiene juntos el nombre completo y sus partes cuando se da solo uno de los lados."""
     values = dict(values)
@@ -141,8 +163,9 @@ def link_or_create_person(
 ) -> Person:
     """Enlaza con la persona del mismo archivo, documento o email (en ese orden) o crea una nueva.
 
-    Los datos de `values` se aplican con `apply_person_fields(…, source)`. El enlace queda en la bitácora
-    (`person.link`). Al final se recalcula "posible misma persona".
+    Una persona nueva recibe todos los datos de `values`. Al enlazar con una existente, `values` solo llena
+    los campos vacíos (`fill_blank_person_fields`): nunca reemplaza un dato que ya tenía. El enlace queda en
+    la bitácora (`person.link`, con el motivo). Al final se recalcula "posible misma persona".
     """
     document_id = _clean("document_id", values.get("document_id"))
     email = _clean("email", values.get("email"))
@@ -153,7 +176,7 @@ def link_or_create_person(
         db.add(person)
         db.flush()
     else:
-        apply_person_fields(person, values, source)
+        fill_blank_person_fields(person, values, source)
         db.flush()
         log_action(
             db, actor=actor, action="person.link", entity_type="person", entity_id=person.id,

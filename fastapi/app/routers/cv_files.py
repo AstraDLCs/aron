@@ -163,7 +163,8 @@ def move_cv(cv_id: str, body: CvFileUpdate, request: Request, user: CurrentUser,
     old_pos, old_src, old_rel = db.get(Position, cv.position_id), db.get(Source, cv.source_id), cv.stored_path
     moved = storage.abs_path(old_rel).is_file()
     if moved:
-        new_rel = storage.move(old_rel, new_pos.folder_name, new_src.folder_name)
+        taken = ingest.registered_paths(db, new_pos.folder_name, new_src.folder_name)
+        new_rel = storage.move(old_rel, new_pos.folder_name, new_src.folder_name, avoid=taken)
     else:  # el archivo ya no estaba: se actualiza la ruta y queda marcado como faltante
         new_rel = f"{new_pos.folder_name}/{new_src.folder_name}/{PurePosixPath(old_rel).name}"
         cv.missing = True

@@ -21,7 +21,9 @@ def _pdf() -> FPDF:
     return pdf
 
 
-def make_cv_pdf(full_name: str, dni: str, email: str, phone: str, body: str = DEFAULT_BODY) -> bytes:
+def make_cv_pdf(
+    full_name: str, dni: str, email: str, phone: str, body: str = DEFAULT_BODY, city: str = "Arequipa"
+) -> bytes:
     pdf = _pdf()
     pdf.set_font("Helvetica", size=11)
     lines = ["CURRICULUM VITAE", full_name]
@@ -31,7 +33,7 @@ def make_cv_pdf(full_name: str, dni: str, email: str, phone: str, body: str = DE
         lines.append(f"Email: {email}")
     if phone:
         lines.append(f"Celular: {phone}")
-    lines.append("Ciudad: Arequipa")
+    lines.append(f"Ciudad: {city}")
     for line in [*lines, *body.split("\n")]:
         pdf.cell(0, 7, line, new_x="LMARGIN", new_y="NEXT")
     return bytes(pdf.output())
