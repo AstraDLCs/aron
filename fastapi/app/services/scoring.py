@@ -119,7 +119,7 @@ def compute_rule_scores(candidate: dict, position: dict, criteria: list[dict]) -
     spec_ratio = spec_matches / min(8, len(need_keywords)) if need_keywords else 0.6
     technical = max(48, min(98, js_round(54 + spec_ratio * 36 + min(8, len(specs) * 2))))
 
-    years = candidate.get('yearsWorked') or 0
+    years = candidate.get('yearsWorked') or 0  # None cuenta como 0 (escalón más bajo)
     if years >= 10:
         years_base = 95
     elif years >= 7:
@@ -211,7 +211,7 @@ def rule_report_text(candidate: dict, position: dict, scores: dict, overall: int
     """
     has_psych, psych, level = _psych_of(candidate, scores)
     title = position.get('name') or candidate.get('targetRoleTitle') or ''
-    years = candidate.get('yearsWorked')
+    years = candidate.get('yearsWorked') or 0
     technical, experience, education = scores['technical'], scores['experience'], scores['education']
 
     if has_psych:
@@ -235,9 +235,14 @@ def rule_report_text(candidate: dict, position: dict, scores: dict, overall: int
 
 
 def compute_kpis(requirements: list[dict], sources: list[dict], candidates: list[dict]) -> dict:
-    """Port de computeRecruitmentKPIs (recruitment.ts:508-563) con la nueva definición de acuerdo IA/RR.HH."""
-    total_vacancies = sum(r.get('vacancies') or 0 for r in requirements)
-    filled = sum(min(r.get('vacancies') or 0, r.get('filledCount') or 0) for r in requirements)
+    """Port de computeRecruitmentKPIs (recruitment.ts:508-563).
+
+    Cambios: los requerimientos 'Cancelado' no cuentan en vacantes ni cobertura, y el acuerdo IA/RR.HH. usa la
+    nueva definición (veredicto vs. decisión).
+    """
+    active = [r for r in requirements if r.get('status') != 'Cancelado']
+    total_vacancies = sum(r.get('vacancies') or 0 for r in active)
+    filled = sum(min(r.get('vacancies') or 0, r.get('filledCount') or 0) for r in active)
     remaining = max(0, total_vacancies - filled)
     coverage = js_round(filled / total_vacancies * 100) if total_vacancies > 0 else 0
 

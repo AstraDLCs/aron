@@ -116,8 +116,6 @@ EMAIL = re.compile(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}')
 PHONE = re.compile(r'(?:\+?51[\s.-]*)?9\d{2}[\s.-]?\d{3}[\s.-]?\d{3}|\+\d{1,3}[\s.-]?\d{6,12}')
 PERSON_WORD = re.compile(r"^[A-ZÁÉÍÓÚÑ][a-záéíóúñA-ZÁÉÍÓÚÑ.'-]+$")
 
-DEFAULT_AGE = 32
-DEFAULT_YEARS = 4
 UNKNOWN_NAME = 'Postulante (Verificar Nombre)'
 
 
@@ -126,17 +124,17 @@ class ParsedCv:
     full_name: str
     first_names: str
     last_names: str
-    age: int
+    age: int | None
     origin_location: str
     university: str
     career: str
-    years_worked: int
+    years_worked: int | None
     work_history_summary: str
     specifications: list[str] = field(default_factory=list)
     email: str = ''
     phone: str = ''
     document_id: str = ''
-    suggested_position_id: str = ''
+    suggested_position_id: str | None = None
 
 
 def _normalize_words(text: str) -> list[str]:
@@ -210,7 +208,7 @@ def parse_cv_text(text: str, positions: list[dict]) -> ParsedCv:
     document_id = doc_m.group(1) if doc_m else ''
 
     # 4. Edad
-    age = DEFAULT_AGE
+    age: int | None = None
     age_m = (
         re.search(r'(?:edad)\s*[:\-–]?\s*(\d{2})\s*(?:a[nñ]os)?', clean, _I)
         or re.search(r'\b(\d{2})\s*a[nñ]os(?!\s*(?:de\s+)?experiencia|.*trabajad)', clean, _I)
@@ -237,8 +235,6 @@ def parse_cv_text(text: str, positions: list[dict]) -> ParsedCv:
         if pattern.search(origin or clean):
             origin = normalized
             break
-    if not origin:
-        origin = 'Perú'
 
     # 6. Universidad / instituto
     university = _labeled_field(lines, [re.compile(
@@ -254,8 +250,6 @@ def parse_cv_text(text: str, positions: list[dict]) -> ParsedCv:
             r'\b(?:Universidad|Instituto\s+Superior|Escuela\s+T[eé]cnica)\b', ln, _I)), None)
         if edu_line:
             university = edu_line[:90]
-    if not university:
-        university = 'Formación Técnica / Universitaria'
 
     # 7. Carrera
     career = _labeled_field(lines, [re.compile(
@@ -267,11 +261,9 @@ def parse_cv_text(text: str, positions: list[dict]) -> ParsedCv:
             if pattern.search(clean):
                 career = label
                 break
-    if not career:
-        career = 'Especialista Operaciones Mineras'
 
     # 8. Años trabajados
-    years = DEFAULT_YEARS
+    years: int | None = None
     exp_m = (
         re.search(r'(\d{1,2})\s*\+?\s*a[nñ]os\s+(?:de\s+)?(?:experiencia|trayectoria|labor|trabajo)', clean, _I)
         or re.search(r'(?:experiencia|tiempo\s+trabajado)\s*[:\-–]?\s*(\d{1,2})\s*\+?\s*a[nñ]os', clean, _I)
@@ -311,8 +303,6 @@ def parse_cv_text(text: str, positions: list[dict]) -> ParsedCv:
         for p in [p for p in parts if 2 <= len(p) <= 55][:5]:
             specs[p] = None
     specifications = list(specs)[:8]
-    if not specifications:
-        specifications.append('Evaluación técnica de CV adjunto')
 
     # 10. Resumen de trayectoria
     summary = ''
@@ -324,13 +314,11 @@ def parse_cv_text(text: str, positions: list[dict]) -> ParsedCv:
         summary = ' · '.join(chunk)[:320]
     if not summary:
         summary = ' · '.join([ln for ln in lines if not HEADER_NOISE.match(ln) and ln != full_name][:4])[:300]
-    if not summary:
-        summary = f'{years} años de experiencia en el rubro.'
 
     # 11. Puesto sugerido por coincidencia de palabras
     cv_tokens = set(_normalize_words(f"{career} {' '.join(specifications)} {clean[:3000]}"))
-    best_id = positions[0]['id'] if positions else ''
-    best_overlap = -1
+    best_id = None
+    best_overlap = 0  # sin coincidencia de palabras no se sugiere puesto
     for pos in positions:
         words = _normalize_words(
             f"{pos.get('name') or ''} {pos.get('area') or ''} {pos.get('requiredSkills') or ''} "
@@ -343,7 +331,7 @@ def parse_cv_text(text: str, positions: list[dict]) -> ParsedCv:
     if full_name:
         first_names, last_names = split_person_name(full_name)
     else:
-        full_name, first_names, last_names = UNKNOWN_NAME, UNKNOWN_NAME, ''
+        full_name, first_names, last_names = UNKNOWN_NAME, '', ''
 
     return ParsedCv(
         full_name=full_name,

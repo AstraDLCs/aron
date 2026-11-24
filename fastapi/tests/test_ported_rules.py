@@ -122,6 +122,24 @@ def test_kpis_top_board_and_agreement():
     assert kpis['preselectedOrHired'] == 1
 
 
+def test_kpis_exclude_cancelled_requirements():
+    base = scoring.compute_kpis(legacy.REQUIREMENTS, legacy.BOARDS, [])
+    cancelled = dict(legacy.REQUIREMENTS[0], id='need-cancelado', vacancies=10, filledCount=0, status='Cancelado')
+    kpis = scoring.compute_kpis([*legacy.REQUIREMENTS, cancelled], legacy.BOARDS, [])
+    assert kpis['totalVacancies'] == base['totalVacancies']
+    assert kpis['filledVacancies'] == base['filledVacancies']
+    assert kpis['remainingVacancies'] == base['remainingVacancies']
+    assert kpis['coveragePercent'] == base['coveragePercent']
+
+
+def test_rule_scores_accept_unknown_years():
+    candidate = dict(legacy.ROBERTO, yearsWorked=None)
+    scores = scoring.compute_rule_scores(candidate, _planta_position(), [])
+    zero = scoring.compute_rule_scores(dict(legacy.ROBERTO, yearsWorked=0), _planta_position(), [])
+    assert scores['experience'] == zero['experience']
+    assert 'None' not in scoring.rule_report_text(candidate, _planta_position(), scores, 70)
+
+
 def test_kpis_agreement_pre_denegado_rechazado():
     candidates = [{'aiVerdict': 'Pre-denegado', 'decision': 'Rechazado'}]
     assert scoring.compute_kpis([], [], candidates)['aiAgreementRate'] == 100
@@ -260,6 +278,26 @@ def test_parse_cv_document_id_and_names():
 
     ce = cv_parser.parse_cv_text('Nombre: Pedro Pérez\nCarné de extranjería Nº 001234567\n', legacy.POSITIONS)
     assert ce.document_id == '001234567'
+
+
+def test_parse_cv_no_fabricated_defaults():
+    parsed = cv_parser.parse_cv_text('Juan Carlos Mendoza Quispe', [])
+    assert parsed.full_name == 'Juan Carlos Mendoza Quispe'
+    assert parsed.age is None
+    assert parsed.years_worked is None
+    assert parsed.origin_location == ''
+    assert parsed.university == ''
+    assert parsed.career == ''
+    assert parsed.work_history_summary == ''
+    assert parsed.specifications == []
+    assert parsed.email == '' and parsed.phone == '' and parsed.document_id == ''
+    assert parsed.suggested_position_id is None
+
+    # Sin nombre detectable: el único valor de respaldo es el nombre para mostrar.
+    anon = cv_parser.parse_cv_text('sin datos', legacy.POSITIONS)
+    assert anon.full_name == 'Postulante (Verificar Nombre)'
+    assert anon.first_names == '' and anon.last_names == ''
+    assert anon.age is None and anon.years_worked is None
 
 
 def test_normalize_key_vectors():
