@@ -1,3 +1,4 @@
+import logging
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -12,6 +13,8 @@ from app.schemas.org import PositionCreate, PositionUpdate
 from app.services.slugs import folder_name_for
 from app.services.snapshot import build_state, pick, state_response
 from app.services.storage import RrhhStorage, get_storage
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/positions", tags=["positions"])
 
@@ -97,27 +100,44 @@ def update_position(
     if values.get("parent_id") is not None:
         _check_parent(db, pos.id, values["parent_id"])
     before, after = apply_changes(pos, values)
-    if "folderName" in after:
+    try:  # primero la base: una colisión de nombre o carpeta debe fallar antes de tocar el disco
+        db.flush()
+    except IntegrityError:
+        db.rollback()
+        _check_unique(db, name=values.get("name"), folder=values.get("folder_name"), exclude_id=position_id)
+        raise HTTPException(status_code=409, detail=DUP_NAME) from None
+    renamed = "folderName" in after
+    if renamed:
         try:
             storage.rename_position_folder(old_folder, pos.folder_name)
         except FileExistsError:
             db.rollback()
             raise HTTPException(status_code=409, detail="La carpeta de destino ya existe en el servidor") from None
-    if before:
-        moved = "parentId" in after
-        log_action(
-            db, actor=user, action="position.move" if moved else "position.update", entity_type="position",
-            entity_id=pos.id,
-            summary=(f"Movió el puesto {pos.name} en el organigrama" if moved else f"Actualizó el puesto {pos.name}"),
-            details={"before": before, "after": after}, ip=client_ip(request),
-        )
+        except Exception:
+            db.rollback()
+            raise
     try:
+        if before:
+            moved = "parentId" in after
+            log_action(
+                db, actor=user, action="position.move" if moved else "position.update", entity_type="position",
+                entity_id=pos.id,
+                summary=(
+                    f"Movió el puesto {pos.name} en el organigrama" if moved else f"Actualizó el puesto {pos.name}"
+                ),
+                details={"before": before, "after": after}, ip=client_ip(request),
+            )
         db.commit()
-    except IntegrityError:
+    except Exception:
         db.rollback()
-        if "folderName" in after:  # la base rechazó el cambio: se devuelve la carpeta a su sitio
-            storage.rename_position_folder(after["folderName"], old_folder)
-        raise HTTPException(status_code=409, detail=DUP_NAME) from None
+        if renamed:  # la base no guardó el cambio: la carpeta vuelve a su sitio
+            try:
+                storage.rename_position_folder(after["folderName"], old_folder)
+            except Exception:
+                logger.exception(
+                    "No se pudo devolver la carpeta '%s' a '%s' tras un error", after["folderName"], old_folder
+                )
+        raise
     state = build_state(db, user)
     return {"position": pick(state, "positions", pos.id), "state": state}
 

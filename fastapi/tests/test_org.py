@@ -232,3 +232,54 @@ def test_settings_patch_logged(client, db, make_user):
 ])
 def test_routes_require_auth(client, method, path):
     assert getattr(client, method)(path, **({} if method == "get" else {"json": {}})).status_code == 401
+
+
+def test_folder_rename_onto_existing_position_folder_409(client, make_user, rrhh_root):
+    _, h = make_user()
+    a = _pos(client, h, "Puesto A")
+    _pos(client, h, "Puesto B")
+    (rrhh_root / "puesto-a" / "portal").mkdir(parents=True)
+    r = client.patch(f"/api/positions/{a['id']}", json={"folderName": "Puesto B"}, headers=h)
+    assert r.status_code == 409 and r.json()["detail"] == "Ya existe un puesto con esa carpeta"
+    assert (rrhh_root / "puesto-a" / "portal").is_dir() and not (rrhh_root / "puesto-b").exists()
+
+
+def test_folder_rename_onto_existing_disk_dir_409(client, make_user, rrhh_root):
+    _, h = make_user()
+    a = _pos(client, h, "Puesto A")
+    (rrhh_root / "puesto-a").mkdir()
+    (rrhh_root / "huerfana").mkdir()
+    r = client.patch(f"/api/positions/{a['id']}", json={"folderName": "huerfana"}, headers=h)
+    assert r.status_code == 409
+    assert r.json()["detail"] == "La carpeta de destino ya existe en el servidor"
+    assert (rrhh_root / "puesto-a").is_dir()
+    # la base no cambió
+    s = client.get("/api/state", headers=h).json()
+    assert s["positions"][0]["folderName"] == "puesto-a"
+
+
+@pytest.mark.parametrize("target", ["app.routers.positions.log_action", "commit"])
+def test_folder_rename_failure_after_move_restores_dir(client, db, make_user, rrhh_root, monkeypatch, target):
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+
+    _, h = make_user()
+    a = _pos(client, h, "Puesto A")
+    (rrhh_root / "puesto-a" / "portal").mkdir(parents=True)
+    (rrhh_root / "puesto-a" / "portal" / "a.pdf").write_bytes(b"x")
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("fallo simulado")
+
+    if target == "commit":
+        monkeypatch.setattr(db, "commit", boom)
+    else:
+        monkeypatch.setattr(target, boom)
+    with TestClient(app, raise_server_exceptions=False) as c:
+        r = c.patch(f"/api/positions/{a['id']}", json={"folderName": "nuevo"}, headers=h)
+    assert r.status_code == 500
+    assert (rrhh_root / "puesto-a" / "portal" / "a.pdf").exists()
+    assert not (rrhh_root / "nuevo").exists()
+    monkeypatch.undo()
+    assert client.get("/api/state", headers=h).json()["positions"][0]["folderName"] == "puesto-a"
